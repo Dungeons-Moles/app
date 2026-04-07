@@ -587,17 +587,6 @@ export function deriveGlobalAuthorityPdas(): GlobalAuthorityPdas {
 // Account Sizes (for rent calculation)
 // ============================================================================
 
-export const ACCOUNT_SIZES = {
-  /** GameSession account size */
-  GAME_SESSION: 8 + 32 + 8 + 1 + 32 + 10 + 32 + 8, // ~131 bytes
-  /** GameState account size */
-  GAME_STATE: 8 + 32 + 32 + 2 + 2 + 2 + 6 * 2 + 1 + 1 + 1 + 4 + 1, // ~90 bytes
-  /** MapPois account size (varies) */
-  MAP_POIS: 8 + 20 * (1 + 1 + 1 + 1), // ~88 bytes
-  /** PlayerInventory account size */
-  PLAYER_INVENTORY: 8 + 8 * 20, // ~168 bytes
-} as const;
-
 // ============================================================================
 // Run Economy Constants
 // ============================================================================
@@ -607,9 +596,6 @@ export const RUN_PRICE_LAMPORTS = 50_000_000;
 
 /** Number of runs received per purchase */
 export const RUNS_PER_PURCHASE = 20;
-
-/** Minimum lamports to keep in sessionSigner wallet */
-export const MIN_SESSION_SIGNER_BALANCE = 5_000;
 
 /** Maximum sessionSigner wallet funding amount (0.1 SOL).
  * Sized for gauntlet (most expensive mode). Repeat sessions only top up ~0.003 SOL. */
@@ -622,21 +608,6 @@ export const DEFAULT_SESSION_SIGNER_FUNDING = 100_000_000;
 /** Map dimensions */
 export const MAP_WIDTH = 9;
 export const MAP_HEIGHT = 9;
-
-/** Maximum concurrent sessions (one per level) */
-export const MAX_SESSIONS = 40;
-
-/** Maximum enemies per map */
-export const MAX_ENEMIES = 10;
-
-/** Starting gear slots */
-export const INITIAL_GEAR_SLOTS = 4;
-
-/** Gear slots after Week 1 boss */
-export const GEAR_SLOTS_WEEK_2 = 6;
-
-/** Gear slots after Week 2 boss */
-export const GEAR_SLOTS_WEEK_3 = 8;
 
 // ============================================================================
 // Network Configuration

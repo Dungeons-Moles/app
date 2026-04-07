@@ -413,7 +413,7 @@ New accounts start with 40 items unlocked (5 per tag = 1 tool + 4 gear):
 
 - Players unlock new items by completing campaign levels for the first time with victory.
 - Each first-time victory unlocks one random item from the remaining locked items.
-- The `record_run_result` instruction handles unlocking via deterministic PRNG.
+- The `record_run_result` instruction handles unlocking via VRF-based random selection.
 
 ---
 
@@ -490,9 +490,9 @@ Some POIs are one-time, others are repeatable utilities.
 | ID  | Location        | Image                                 | Rarity   | Use                   | Active     | Interaction                                                                                         |
 | --- | --------------- | ------------------------------------- | -------- | --------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
 | L1  | Mole Den        | assets/world/pois/mole-den.png        | Fixed    | Repeatable            | Night-only | Skip to Day; restore all HP                                                                         |
-| L2  | Supply Cache    | assets/world/pois/supply-cache.png    | Common   | One-time              | Anytime    | Pick 1 of 3 Common Gear (tag-weighted to current week boss weaknesses)                              |
+| L2  | Supply Cache    | assets/world/pois/supply-cache.png    | Common   | One-time              | Anytime    | Pick 1 of 3 Gear (rarity varies by act, tag-weighted to current week boss weaknesses)               |
 | L3  | Tool Crate      | assets/world/pois/tool-crate.png      | Uncommon | One-time              | Anytime    | Pick 1 of 3 Tools (tag-weighted)                                                                    |
-| L4  | Tool Oil Rack   | assets/world/pois/tool-oil-rack.png   | Common   | Repeatable (per tool) | Anytime    | Modify current tool: +1 ATK or +1 SPD or +1 DIG or +1 ARM (once per tool), no cost                  |
+| L4  | Tool Oil Rack   | assets/world/pois/tool-oil-rack.png   | Common   | One-time              | Anytime    | Apply an oil to current tool: +1 ATK or +1 SPD or +1 DIG or +1 ARM, no cost                         |
 | L5  | Rest Alcove     | assets/world/pois/rest-alcove.png     | Common   | One-time              | Night-only | Skip to Day; heal 10 HP                                                                             |
 | L6  | Survey Beacon   | assets/world/pois/survey-beacon.png   | Common   | One-time              | Anytime    | Reveal tiles in radius 13                                                                           |
 | L7  | Seismic Scanner | assets/world/pois/seismic-scanner.png | Uncommon | One-time              | Anytime    | Choose a POI category → reveal nearest instance                                                     |
@@ -752,7 +752,7 @@ Optional "final prep bias":
 ### Session Cost & Profile
 
 - **Profile Creation:** Players start with **20 free PvE runs** (Campaign).
-- **Top-up (current implementation):** 20 additional PvE runs cost **0.005 SOL**.
+- **Top-up (current implementation):** 20 additional PvE runs cost **0.05 SOL**.
 - **Run Debit (current implementation):** A run is debited at **session start**.
 
 ### Mode Fees & Splits (v1)
@@ -762,7 +762,7 @@ All splits below are expressed as % of the **SOL paid**.
 #### PvE — Campaign / Practice
 
 - New account: 20 free PvE runs.
-- After that: 0.005 SOL for 20 PvE runs.
+- After that: 0.05 SOL for 20 PvE runs.
 - Split: **50% company / 50% Gauntlet pool**.
 
 #### PvP — Gauntlet (Async)
@@ -858,9 +858,7 @@ Gold income is roughly flat across acts (~70–75 gold), but its purchasing powe
 
 - A run lasts **5 weeks**.
 - At the end of each week, the player fights an **Echo** (a snapshot of another player's validated build that survived to that same week).
-- Opponent visibility:
-  - Weeks 1–4: opponent build is visible **at end of the week**.
-  - Week 5: opponent build is visible **only during Week 5**.
+- Opponent visibility: the Echo opponent's build for the current week is always visible.
 
 ### PvP — Duels (Direct)
 
@@ -870,6 +868,6 @@ Gold income is roughly flat across acts (~70–75 gold), but its purchasing powe
 
 ### PvP — Pit Draft (Instant)
 
-- Two players are matched, then each draws **1 Tool + 7 Gear** from their active pool.
-- A **random oil** is applied to the Tool.
+- Two players are matched, then each is assigned a fully random loadout: **1 Tool + 7 Gear** drawn randomly from their active pool.
+- A **random oil** is applied to the Tool. Players do not choose or modify their loadout.
 - Immediate deterministic combat; winner takes the pot (net of fees).

@@ -965,7 +965,6 @@ export async function buildInitializeGauntletTransaction(
 
 const SETTLE_CU_LIMIT = 500_000;
 const FINALIZE_CU_LIMIT = 300_000;
-const PAYOUT_CU_LIMIT = 300_000;
 
 export async function buildSettleGauntletSessionTransaction(
   connection: Connection,
@@ -1075,131 +1074,6 @@ export async function buildFinalizeGauntletEpochTransaction(
     .transaction();
 
   tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: FINALIZE_CU_LIMIT }));
-  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  tx.recentBlockhash = blockhash;
-  tx.feePayer = payerPublicKey;
-  return tx;
-}
-
-export async function buildSettleGauntletDefenderPointsTransaction(
-  connection: Connection,
-  program: Program,
-  payerPublicKey: PublicKey,
-  epochId: bigint,
-  playerPublicKey: PublicKey
-): Promise<Transaction> {
-  const epochIdBN = new BN(epochId.toString());
-  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
-  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
-
-  const tx = await (
-    program.methods as unknown as {
-      settleGauntletDefenderPoints: (epochIdArg: BN) => {
-        accounts: (accounts: {
-          gauntletEpochPool: PublicKey;
-          gauntletPlayerScore: PublicKey;
-          player: PublicKey;
-          payer: PublicKey;
-          systemProgram: PublicKey;
-        }) => { transaction: () => Promise<Transaction> };
-      };
-    }
-  )
-    .settleGauntletDefenderPoints(epochIdBN)
-    .accounts({
-      gauntletEpochPool: gauntletEpochPoolPda,
-      gauntletPlayerScore: gauntletPlayerScorePda,
-      player: playerPublicKey,
-      payer: payerPublicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .transaction();
-
-  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_CU_LIMIT }));
-  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  tx.recentBlockhash = blockhash;
-  tx.feePayer = payerPublicKey;
-  return tx;
-}
-
-export async function buildSettleGauntletRewardForPlayerTransaction(
-  connection: Connection,
-  program: Program,
-  payerPublicKey: PublicKey,
-  epochId: bigint,
-  playerPublicKey: PublicKey
-): Promise<Transaction> {
-  const epochIdBN = new BN(epochId.toString());
-  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
-  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
-  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
-
-  const tx = await (
-    program.methods as unknown as {
-      settleGauntletRewardForPlayer: (epochIdArg: BN) => {
-        accounts: (accounts: {
-          gauntletEpochPool: PublicKey;
-          gauntletPlayerScore: PublicKey;
-          gauntletRewardRecord: PublicKey;
-          player: PublicKey;
-          payer: PublicKey;
-          systemProgram: PublicKey;
-        }) => { transaction: () => Promise<Transaction> };
-      };
-    }
-  )
-    .settleGauntletRewardForPlayer(epochIdBN)
-    .accounts({
-      gauntletEpochPool: gauntletEpochPoolPda,
-      gauntletPlayerScore: gauntletPlayerScorePda,
-      gauntletRewardRecord: gauntletRewardRecordPda,
-      player: playerPublicKey,
-      payer: payerPublicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .transaction();
-
-  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_CU_LIMIT }));
-  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  tx.recentBlockhash = blockhash;
-  tx.feePayer = payerPublicKey;
-  return tx;
-}
-
-export async function buildPayoutGauntletRewardTransaction(
-  connection: Connection,
-  program: Program,
-  payerPublicKey: PublicKey,
-  epochId: bigint,
-  playerPublicKey: PublicKey
-): Promise<Transaction> {
-  const epochIdBN = new BN(epochId.toString());
-  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
-  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
-  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
-
-  const tx = await (
-    program.methods as unknown as {
-      payoutGauntletReward: (epochIdArg: BN) => {
-        accounts: (accounts: {
-          gauntletRewardRecord: PublicKey;
-          gauntletPlayerScore: PublicKey;
-          gauntletPoolVault: PublicKey;
-          playerWallet: PublicKey;
-        }) => { transaction: () => Promise<Transaction> };
-      };
-    }
-  )
-    .payoutGauntletReward(epochIdBN)
-    .accounts({
-      gauntletRewardRecord: gauntletRewardRecordPda,
-      gauntletPlayerScore: gauntletPlayerScorePda,
-      gauntletPoolVault: gauntletPoolVaultPda,
-      playerWallet: playerPublicKey,
-    })
-    .transaction();
-
-  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: PAYOUT_CU_LIMIT }));
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   tx.recentBlockhash = blockhash;
   tx.feePayer = payerPublicKey;

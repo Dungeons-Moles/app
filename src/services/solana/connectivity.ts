@@ -2,15 +2,15 @@ import { Connection } from '@solana/web3.js';
 import { getCachedProfile } from './cache';
 import type { CachedProfileData } from '@/types/solana';
 
-export type ConnectivityMode = 'online' | 'cached' | 'guest';
+type ConnectivityMode = 'online' | 'cached' | 'guest';
 
-export interface ConnectivityState {
+interface ConnectivityState {
   mode: ConnectivityMode;
   isRpcConnected: boolean;
   lastConnected: number | null;
 }
 
-export function determineMode(
+function determineMode(
   isConnected: boolean,
   cachedProfile: CachedProfileData | null
 ): ConnectivityMode {

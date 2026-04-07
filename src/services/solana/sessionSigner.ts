@@ -710,13 +710,6 @@ export async function loadSessionSignerForSession(
 }
 
 /**
- * Removes the session-specific signer keypair from storage.
- */
-export async function clearSessionSignerForSession(sessionPda: string): Promise<void> {
-  await SecureStorage.deleteItemAsync(sessionSignerKeyForSession(sessionPda));
-}
-
-/**
  * Gets information about the current sessionSigner wallet.
  *
  * @param connection - Solana connection

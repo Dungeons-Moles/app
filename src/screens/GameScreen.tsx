@@ -126,6 +126,9 @@ const ICON_Y = require('../../assets/ui/control-buttons/y.webp');
 const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.webp');
 const ENGINE_ICON = require('../../assets/ui/illustrations/engine.webp');
 const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
+const ICON_A = require('../../assets/ui/control-buttons/a.webp');
+const ICON_B = require('../../assets/ui/control-buttons/b.webp');
+const BUTTON_BG = require('../../assets/ui/buttons/button.webp');
 
 const DUEL_BASE_HP = 20;
 
@@ -466,7 +469,7 @@ function navigateToDeath(
   });
 }
 
-function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
+const ThinSeparator = React.memo(function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
   if (horizontal) {
     return (
       <View style={styles.hSeparator}>
@@ -483,9 +486,9 @@ function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
       </Svg>
     </View>
   );
-}
+});
 
-function CrossingLines({ navbarHeight, isCompact }: { navbarHeight: number; isCompact: boolean }) {
+const CrossingLines = React.memo(function CrossingLines({ navbarHeight, isCompact }: { navbarHeight: number; isCompact: boolean }) {
   return (
     <View style={styles.linesOverlay} pointerEvents="none">
       <View style={[styles.hLineContainer, { top: navbarHeight - 3 }]}>
@@ -498,7 +501,121 @@ function CrossingLines({ navbarHeight, isCompact }: { navbarHeight: number; isCo
       )}
     </View>
   );
-}
+});
+
+const ICON_28 = { width: 28, height: 28 } as const;
+const COMPACT_BUTTON_ROW = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 };
+const COMPACT_BUTTON_ROW_WIDE = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 24, marginTop: 8 };
+const TOUCH_BUTTON_ROW = { flexDirection: 'row' as const, gap: 16, marginTop: 8 };
+
+type WeaponSwapModalProps = {
+  toolName: string;
+  equippedToolName: string;
+  isCompact: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+const WeaponSwapModal = React.memo(function WeaponSwapModal({
+  toolName,
+  equippedToolName,
+  isCompact,
+  onCancel,
+  onConfirm,
+}: WeaponSwapModalProps) {
+  return (
+    <View style={styles.duelCompleteOverlay}>
+      <CachedImageBackground
+        source={PAPER_PANEL_WIDE}
+        resizeMode="stretch"
+        style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
+      >
+        <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Replace Weapon?</Text>
+        <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
+          You already have {equippedToolName} equipped.
+          {'\n\n'}
+          Picking {toolName} will replace your current weapon permanently.
+        </Text>
+        {isCompact ? (
+          <View style={COMPACT_BUTTON_ROW_WIDE}>
+            <View style={COMPACT_BUTTON_ROW}>
+              <Image source={ICON_B} style={ICON_28} />
+              <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Cancel</Text>
+            </View>
+            <View style={COMPACT_BUTTON_ROW}>
+              <Image source={ICON_A} style={ICON_28} />
+              <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Replace</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={TOUCH_BUTTON_ROW}>
+            <Pressable onPress={onCancel}>
+              <CachedImageBackground
+                source={BUTTON_BG}
+                resizeMode="stretch"
+                style={styles.duelCompleteButton}
+              >
+                <Text style={styles.duelCompleteButtonText}>Cancel</Text>
+              </CachedImageBackground>
+            </Pressable>
+            <Pressable onPress={onConfirm}>
+              <CachedImageBackground
+                source={BUTTON_BG}
+                resizeMode="stretch"
+                style={styles.duelCompleteButton}
+              >
+                <Text style={styles.duelCompleteButtonText}>Replace</Text>
+              </CachedImageBackground>
+            </Pressable>
+          </View>
+        )}
+      </CachedImageBackground>
+    </View>
+  );
+});
+
+type DuelCompleteOverlayProps = {
+  isCompact: boolean;
+  onOk: () => void;
+};
+
+const DuelCompleteOverlay = React.memo(function DuelCompleteOverlay({
+  isCompact,
+  onOk,
+}: DuelCompleteOverlayProps) {
+  return (
+    <View style={styles.duelCompleteOverlay}>
+      <CachedImageBackground
+        source={PAPER_PANEL_WIDE}
+        resizeMode="stretch"
+        style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
+      >
+        <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Duel Run Complete!</Text>
+        <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
+          Your run is finished. Your opponent hasn't completed their run yet.
+          {'\n\n'}
+          You can check the outcome on the Duels History screen when they're done.
+        </Text>
+        <Pressable onPress={onOk}>
+          {isCompact ? (
+            <View style={COMPACT_BUTTON_ROW}>
+              <Image source={ICON_A} style={ICON_28} />
+              <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>OK</Text>
+            </View>
+          ) : (
+            <CachedImageBackground
+              source={BUTTON_BG}
+              resizeMode="stretch"
+              style={styles.duelCompleteButton}
+            >
+              <Text style={styles.duelCompleteButtonText}>OK</Text>
+            </CachedImageBackground>
+          )}
+        </Pressable>
+      </CachedImageBackground>
+    </View>
+  );
+});
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -3632,18 +3749,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
         setScrapSelection(item as Gear);
       }
     },
-    [state]
+    [state?.phase, state?.activePOI, state?.player?.inventory]
   );
 
+  const activePOI = state?.activePOI;
   const kilnFuseOptionIndex = useMemo(() => {
     if (
-      state?.activePOI?.poi.definitionId !== 'L11' ||
+      activePOI?.poi.definitionId !== 'L11' ||
       !kilnSelection.gearId ||
       !kilnSelection.rarity ||
       kilnSelection.count < 2
     )
       return null;
-    const options = state.activePOI.options ?? [];
+    const options = activePOI.options ?? [];
     const index = options.findIndex(
       (opt) =>
         opt.item &&
@@ -3652,15 +3770,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
         (opt.item as Gear).currentRarity === kilnSelection.rarity
     );
     return index >= 0 ? index : null;
-  }, [state, kilnSelection]);
+  }, [activePOI, kilnSelection]);
 
   const scrapOptionIndex = useMemo(() => {
-    if (state?.activePOI?.poi.definitionId !== 'L14' || !scrapSelection) return null;
-    const options = state.activePOI.options ?? [];
+    if (activePOI?.poi.definitionId !== 'L14' || !scrapSelection) return null;
+    const options = activePOI.options ?? [];
     return options.findIndex(
       (opt) => opt.item && 'id' in opt.item && opt.item.id === scrapSelection.id
     );
-  }, [state, scrapSelection]);
+  }, [activePOI, scrapSelection]);
 
   const handleControllerGearSelect = useCallback(
     (gear: Gear) => {
@@ -3718,26 +3836,50 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isCompact = variant === 'compact';
   const navScale = isCompact ? 2 : 1;
   const navbarHeight = NAVBAR_HEIGHT * navScale;
+  const scaledStyles = useMemo(() => ({
+    navbarPadding: { paddingHorizontal: 15 * navScale } as const,
+    navbarLeftWidth: { width: 100 * navScale } as const,
+    navbarRightWidth: { width: 80 * navScale } as const,
+    mapButtonRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 2 * navScale },
+    mapButton: { width: 36 * navScale, height: 36 * navScale, justifyContent: 'center' as const, alignItems: 'center' as const },
+    mapIconSize: { width: 32 * navScale, height: 32 * navScale },
+    controllerIcon: { width: 14 * navScale, height: 14 * navScale },
+    weekFontSize: { fontSize: 12 * navScale },
+    goldGap: { gap: 6 * navScale },
+    coinSize: { width: 28 * navScale, height: 28 * navScale },
+    goldFontSize: { fontSize: 24 * navScale },
+  }), [navScale]);
+  const playerTime = state?.time;
+  const playerStats = state?.player?.stats;
+  const playerInventoryCapacity = state?.player?.inventoryCapacity;
+  const playerEquippedTool = state?.player?.equippedTool;
+  const playerActiveItemsets = state?.player?.activeItemsets;
+  const onChainRunMode = onChainState?.runMode;
   const sharedSidebarProps = useMemo(
     () =>
-      state
+      playerTime
         ? {
-            time: state.time,
-            stats: state.player.stats,
-            inventory: state.player.inventory,
-            inventoryCapacity: state.player.inventoryCapacity,
+            time: playerTime,
+            stats: playerStats!,
+            inventory: playerInventory!,
+            inventoryCapacity: playerInventoryCapacity!,
             maxGearSlots: runMaxGearSlots,
             isGauntletLayout,
-            equippedTool: state.player.equippedTool,
-            activeItemsets: state.player.activeItemsets,
-            runMode: onChainState?.runMode,
+            equippedTool: playerEquippedTool!,
+            activeItemsets: playerActiveItemsets!,
+            runMode: onChainRunMode,
           }
         : null,
     [
-      state,
+      playerTime,
+      playerStats,
+      playerInventory,
+      playerInventoryCapacity,
+      playerEquippedTool,
+      playerActiveItemsets,
       runMaxGearSlots,
       isGauntletLayout,
-      onChainState?.runMode,
+      onChainRunMode,
     ]
   );
   const handleToggleOverview = useCallback(() => {
@@ -3768,6 +3910,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [state, mode, onChainState, playSfx]);
 
   const handleSkipToEowClose = useCallback(() => setShowSkipToEow(false), []);
+  const handleOpenTutorialFromPause = useCallback(() => {
+    setShowPauseMenu(false);
+    setShowTutorial(true);
+  }, []);
+  const handleCloseTutorial = useCallback(() => setShowTutorial(false), []);
+  const handleOpenPauseMenu = useCallback(() => {
+    playSfx('ui_click');
+    setShowPauseMenu(true);
+  }, [playSfx]);
+  const handleDuelCompleteOk = useCallback(() => {
+    setDuelCompleteVisible(false);
+    playBgm('hub');
+    navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
+  }, [playBgm, navigation]);
 
   const handleSkipToEowConfirm = useCallback(async () => {
     setIsSkippingToEow(true);
@@ -3864,48 +4020,43 @@ export function GameScreen({ navigation }: GameScreenProps) {
           <View style={styles.fullLayout}>
             {/* Top Area */}
             <View style={[styles.topRow, { height: navbarHeight }]}>
-              <View style={[styles.navbarArea, { paddingHorizontal: 15 * navScale }]}>
-                <View style={[styles.navbarLeft, { width: 100 * navScale }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 * navScale }}>
+              <View style={[styles.navbarArea, scaledStyles.navbarPadding]}>
+                <View style={[styles.navbarLeft, scaledStyles.navbarLeftWidth]}>
+                  <View style={scaledStyles.mapButtonRow}>
                     <Pressable
-                      style={{
-                        width: 36 * navScale,
-                        height: 36 * navScale,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
+                      style={scaledStyles.mapButton}
                       onPress={handleToggleOverview}
                       disabled={isFastTravelActive}
                     >
                       <Image
                         source={MAP_ICON}
-                        style={{ width: 32 * navScale, height: 32 * navScale }}
+                        style={scaledStyles.mapIconSize}
                         contentFit="contain"
                       />
                     </Pressable>
                     {isController && (
                       <Image
                         source={ICON_Y}
-                        style={{ width: 14 * navScale, height: 14 * navScale }}
+                        style={scaledStyles.controllerIcon}
                         contentFit="contain"
                       />
                     )}
                   </View>
                 </View>
                 <View style={styles.navbarCenter}>
-                  <Text style={[styles.weekText, { fontSize: 12 * navScale }]}>
+                  <Text style={[styles.weekText, scaledStyles.weekFontSize]}>
                     Week {state.time.week}
                   </Text>
                   <TopBar time={state.time} scale={navScale} onSkullPress={handleSkullPress} />
                 </View>
-                <View style={[styles.navbarRight, { width: 80 * navScale }]}>
-                  <View style={[styles.goldDisplay, { gap: 6 * navScale }]}>
+                <View style={[styles.navbarRight, scaledStyles.navbarRightWidth]}>
+                  <View style={[styles.goldDisplay, scaledStyles.goldGap]}>
                     <Image
                       source={COIN_ICON}
-                      style={{ width: 28 * navScale, height: 28 * navScale }}
+                      style={scaledStyles.coinSize}
                       contentFit="contain"
                     />
-                    <Text style={[styles.goldValue, { fontSize: 24 * navScale }]}>
+                    <Text style={[styles.goldValue, scaledStyles.goldFontSize]}>
                       {state.player.stats.gold}
                     </Text>
                   </View>
@@ -3919,10 +4070,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   {!isController && (
                     <Pressable
                       style={styles.pauseButtonOverlay}
-                      onPress={() => {
-                        playSfx('ui_click');
-                        setShowPauseMenu(true);
-                      }}
+                      onPress={handleOpenPauseMenu}
                     >
                       <CachedImageBackground
                         source={BUTTON_V5}
@@ -4037,10 +4185,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 onReturnToHub={handleReturnToHub}
                 onAbandonSession={mode !== 'guest' ? handleDebugExitSession : undefined}
                 isAbandoning={isExitingSession}
-                onOpenTutorial={() => {
-                  setShowPauseMenu(false);
-                  setShowTutorial(true);
-                }}
+                onOpenTutorial={handleOpenTutorialFromPause}
               />
             )}
 
@@ -4109,97 +4254,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
             />
           )}
         {pendingWeaponSwap && (
-          <View style={styles.duelCompleteOverlay}>
-            <CachedImageBackground
-              source={PAPER_PANEL_WIDE}
-              resizeMode="stretch"
-              style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
-            >
-              <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Replace Weapon?</Text>
-              <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
-                You already have {state?.player?.equippedTool?.name ?? 'a weapon'} equipped.
-                {'\n\n'}
-                Picking {pendingWeaponSwap.toolName} will replace your current weapon permanently.
-              </Text>
-              {isCompact ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24, marginTop: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Image source={require('../../assets/ui/control-buttons/b.webp')} style={{ width: 28, height: 28 }} />
-                    <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Cancel</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Image source={require('../../assets/ui/control-buttons/a.webp')} style={{ width: 28, height: 28 }} />
-                    <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Replace</Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
-                  <Pressable onPress={handleCancelWeaponSwap}>
-                    <CachedImageBackground
-                      source={require('../../assets/ui/buttons/button.webp')}
-                      resizeMode="stretch"
-                      style={styles.duelCompleteButton}
-                    >
-                      <Text style={styles.duelCompleteButtonText}>Cancel</Text>
-                    </CachedImageBackground>
-                  </Pressable>
-                  <Pressable onPress={handleConfirmWeaponSwap}>
-                    <CachedImageBackground
-                      source={require('../../assets/ui/buttons/button.webp')}
-                      resizeMode="stretch"
-                      style={styles.duelCompleteButton}
-                    >
-                      <Text style={styles.duelCompleteButtonText}>Replace</Text>
-                    </CachedImageBackground>
-                  </Pressable>
-                </View>
-              )}
-            </CachedImageBackground>
-          </View>
+          <WeaponSwapModal
+            toolName={pendingWeaponSwap.toolName}
+            equippedToolName={state?.player?.equippedTool?.name ?? 'a weapon'}
+            isCompact={isCompact}
+            onCancel={handleCancelWeaponSwap}
+            onConfirm={handleConfirmWeaponSwap}
+          />
         )}
-        <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
+        <TutorialModal visible={showTutorial} onClose={handleCloseTutorial} />
         <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
         {duelCompleteVisible && (
-          <View style={styles.duelCompleteOverlay}>
-            <CachedImageBackground
-              source={PAPER_PANEL_WIDE}
-              resizeMode="stretch"
-              style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
-            >
-              {(
-                <>
-                  <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Duel Run Complete!</Text>
-                  <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
-                    Your run is finished. Your opponent hasn't completed their run yet.
-                    {'\n\n'}
-                    You can check the outcome on the Duels History screen when they're done.
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      setDuelCompleteVisible(false);
-                      playBgm('hub');
-                      navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
-                    }}
-                  >
-                    {isCompact ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Image source={require('../../assets/ui/control-buttons/a.webp')} style={{ width: 28, height: 28 }} />
-                        <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>OK</Text>
-                      </View>
-                    ) : (
-                      <CachedImageBackground
-                        source={require('../../assets/ui/buttons/button.webp')}
-                        resizeMode="stretch"
-                        style={styles.duelCompleteButton}
-                      >
-                        <Text style={styles.duelCompleteButtonText}>OK</Text>
-                      </CachedImageBackground>
-                    )}
-                  </Pressable>
-                </>
-              )}
-            </CachedImageBackground>
-          </View>
+          <DuelCompleteOverlay isCompact={isCompact} onOk={handleDuelCompleteOk} />
         )}
         </View>
       </InstantImageBackground>

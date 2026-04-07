@@ -10,7 +10,7 @@ import playerInventoryIdl from './idl/player_inventory.json';
 import poiSystemIdl from './idl/poi_system.json';
 import nftMarketplaceIdl from './idl/nft_marketplace.json';
 
-export type AnchorWalletAdapter = {
+type AnchorWalletAdapter = {
   publicKey: AnchorProvider['wallet']['publicKey'];
   signTransaction: AnchorProvider['wallet']['signTransaction'];
   signAllTransactions: AnchorProvider['wallet']['signAllTransactions'];

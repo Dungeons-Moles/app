@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Pressable,
   TouchableWithoutFeedback,
   ScrollView,
   RefreshControl,
@@ -41,7 +42,9 @@ import { useSessionSigner } from '../hooks/useSessionSigner';
 import {
   buildGameWalletDerivationMessage,
   deriveSessionSignerFromSignature,
+  createFundSessionSignerTransaction,
   drainSessionSignerToMain,
+  SESSION_COST_CAMPAIGN,
   storeSessionSignerWallet,
 } from '../services/solana/sessionSigner';
 import { getVrfSeed } from '../services/solana/vrf';
@@ -115,7 +118,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
   const { playBgm, playSfx } = useAudio();
-  const { wallet, getBalance, disconnect, signMessage } = useWallet();
+  const { wallet, getBalance, disconnect, signMessage, signAndSendTransaction } = useWallet();
   const sessionSigner = useSessionSigner();
   const { connection } = useSolanaConnection();
   const [gauntletPoolLamports, setGauntletPoolLamports] = useState<bigint | null>(null);
@@ -140,6 +143,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     index: 0,
   });
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isToppingUp, setIsToppingUp] = useState(false);
   const [showResetWarning, setShowResetWarning] = useState(false);
   const [resetInProgress, setResetInProgress] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -504,6 +508,33 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const canWithdraw =
     !!sessionSigner.keypair && sessionSigner.balance > 0 && !hasActiveSession && !isWithdrawing;
+
+  const topUpTarget = SESSION_COST_CAMPAIGN; // 0.12 SOL
+  const needsTopUp =
+    !!sessionSigner.keypair && sessionSigner.balance < topUpTarget && !isToppingUp;
+
+  const handleTopUpGameWallet = useCallback(async () => {
+    if (!sessionSigner.keypair || !wallet.publicKey || isToppingUp) return;
+    const deficit = topUpTarget - sessionSigner.balance;
+    if (deficit <= 0) return;
+    playSfx('ui_click');
+    setIsToppingUp(true);
+    try {
+      const tx = createFundSessionSignerTransaction(
+        wallet.publicKey,
+        sessionSigner.keypair.publicKey,
+        deficit
+      );
+      const sig = await signAndSendTransaction(tx);
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      await connection.confirmTransaction({ signature: sig, ...latestBlockhash }, 'confirmed');
+      await sessionSigner.refreshBalance();
+    } catch (err) {
+      console.warn('[HubScreen] Top up failed:', err);
+    } finally {
+      setIsToppingUp(false);
+    }
+  }, [sessionSigner, wallet.publicKey, isToppingUp, topUpTarget, playSfx, signAndSendTransaction]);
 
   const NAME_MAX_LENGTH = 32;
 
@@ -1772,16 +1803,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
         animationType="fade"
         onRequestClose={() => setShowProfile(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setShowProfile(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View
-                style={[
-                  styles.marketplaceModal,
-                  isCompact && compactStyles.marketplaceModal,
-                  modalScale < 1 && { transform: [{ scale: modalScale }] },
-                ]}
-              >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowProfile(false)}>
+            <Pressable
+              style={[
+                styles.marketplaceModal,
+                isCompact && compactStyles.marketplaceModal,
+                modalScale < 1 && { transform: [{ scale: modalScale }] },
+              ]}
+            >
                 <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -2043,36 +2072,73 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             </Text>
                           </View>
                         </View>
-                        <TouchableOpacity
-                          onPress={handleWithdrawGameWallet}
-                          disabled={!canWithdraw}
-                          activeOpacity={0.7}
-                          style={{ alignItems: 'center', marginTop: 8 }}
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            justifyContent: 'center',
+                            gap: 8,
+                            marginTop: 8,
+                          }}
                         >
-                          <CachedImageBackground
-                            source={buttonV3Source}
-                            style={[
-                              styles.profileSaveButton,
-                              isCompact && compactStyles.profileSaveButton,
-                              { width: isCompact ? 280 : 160 },
-                              !canWithdraw && { opacity: 0.5 },
-                            ]}
-                            resizeMode="stretch"
+                          <TouchableOpacity
+                            onPress={handleTopUpGameWallet}
+                            disabled={!needsTopUp}
+                            activeOpacity={0.7}
                           >
-                            {isWithdrawing ? (
-                              <ActivityIndicator size="small" color="#3d2b1f" />
-                            ) : (
-                              <Text
-                                style={[
-                                  styles.profileSaveButtonText,
-                                  isCompact && compactStyles.profileSaveButtonText,
-                                ]}
-                              >
-                                {hasActiveSession ? 'Session Active' : 'Withdraw'}
-                              </Text>
-                            )}
-                          </CachedImageBackground>
-                        </TouchableOpacity>
+                            <CachedImageBackground
+                              source={buttonV3Source}
+                              style={[
+                                styles.profileSaveButton,
+                                isCompact && compactStyles.profileSaveButton,
+                                { width: isCompact ? 180 : 110 },
+                                !needsTopUp && { opacity: 0.5 },
+                              ]}
+                              resizeMode="stretch"
+                            >
+                              {isToppingUp ? (
+                                <ActivityIndicator size="small" color="#3d2b1f" />
+                              ) : (
+                                <Text
+                                  style={[
+                                    styles.profileSaveButtonText,
+                                    isCompact && compactStyles.profileSaveButtonText,
+                                  ]}
+                                >
+                                  Top Up
+                                </Text>
+                              )}
+                            </CachedImageBackground>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={handleWithdrawGameWallet}
+                            disabled={!canWithdraw}
+                            activeOpacity={0.7}
+                          >
+                            <CachedImageBackground
+                              source={buttonV3Source}
+                              style={[
+                                styles.profileSaveButton,
+                                isCompact && compactStyles.profileSaveButton,
+                                { width: isCompact ? 180 : 110 },
+                                !canWithdraw && { opacity: 0.5 },
+                              ]}
+                              resizeMode="stretch"
+                            >
+                              {isWithdrawing ? (
+                                <ActivityIndicator size="small" color="#3d2b1f" />
+                              ) : (
+                                <Text
+                                  style={[
+                                    styles.profileSaveButtonText,
+                                    isCompact && compactStyles.profileSaveButtonText,
+                                  ]}
+                                >
+                                  {hasActiveSession ? 'Session Active' : 'Withdraw'}
+                                </Text>
+                              )}
+                            </CachedImageBackground>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     )}
                   </ScrollView>
@@ -2117,10 +2183,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   )}
                 </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
+            </Pressable>
+        </Pressable>
       </InlineModal>
 
       {/* Profile Controller Keyboard */}

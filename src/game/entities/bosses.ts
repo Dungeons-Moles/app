@@ -11,12 +11,9 @@ import type {
   CombatantState,
   StatusEffects,
   EffectTiming,
-  Gear,
-  GearId,
   ItemTag,
 } from '../engine/types';
 import { BOSSES, type BossDefinition } from '../../data/bosses';
-import { GEAR_DEFINITIONS, type GearDefinition } from '../../data/gear';
 
 // ============================================================================
 // Boss Trait Types
@@ -162,25 +159,6 @@ const gasAnomalyTrait: BossTrait = {
 // ============================================================================
 // T106: Mad Miner Trait - Scavenger Mirror (Battle Start: copy Common item)
 // ============================================================================
-
-function getRandomCommonItemEffect(playerGear: Gear[]): GearDefinition | null {
-  // Filter for Common items that have effects
-  const commonItemIds = playerGear.filter((g) => g.currentRarity === 'COMMON').map((g) => g.id);
-
-  const commonWithEffects = commonItemIds
-    .map((id) => GEAR_DEFINITIONS[id])
-    .filter((def): def is GearDefinition => def?.effect !== undefined);
-
-  if (commonWithEffects.length === 0) {
-    return null;
-  }
-
-  // TODO: P03 VIOLATION - Math.random() breaks determinism.
-  // This should accept a SeededRNG parameter and use rng.nextInt() instead.
-  // Per constitution P03: All game logic MUST be deterministic.
-  const randomIndex = Math.floor(Math.random() * commonWithEffects.length);
-  return commonWithEffects[randomIndex];
-}
 
 const madMinerTrait: BossTrait = {
   id: 'B-A-W1-04',

@@ -443,36 +443,6 @@ export async function fetchFullSessionState(
   return state;
 }
 
-// ============================================================================
-// Tile Unpacking
-// ============================================================================
-
-/**
- * Unpacks bit-packed tile data into a 2D TileType array.
- * On-chain format: bit index = y * width + x, 0=floor, 1=wall.
- *
- * @param packedTiles - Bit-packed tile array (e.g., 313 bytes for 50x50)
- * @param width - Map width
- * @param height - Map height
- * @returns 2D array of TileType
- */
-export function unpackTiles(packedTiles: number[], width: number, height: number): TileType[][] {
-  const tiles: TileType[][] = [];
-
-  for (let y = 0; y < height; y++) {
-    tiles[y] = [];
-    for (let x = 0; x < width; x++) {
-      const bitIndex = y * width + x;
-      const byteIndex = Math.floor(bitIndex / 8);
-      const bitOffset = bitIndex % 8;
-      const isWall = (packedTiles[byteIndex] >> bitOffset) & 1;
-      tiles[y][x] = isWall ? TileType.Wall : TileType.Floor;
-    }
-  }
-
-  return tiles;
-}
-
 export function buildFogFromOnChainDiscovery(
   discoveredTiles: number[],
   width: number,

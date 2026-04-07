@@ -5,7 +5,7 @@ import { PlayerProfile } from '../types';
 const PROFILE_KEY = 'player_profile';
 const IS_WEB = Platform.OS === 'web';
 
-function getWebStorage(): Storage | null {
+export function getWebStorage(): Storage | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -79,10 +79,6 @@ export async function deleteProfile(): Promise<void> {
     console.error('Failed to delete profile:', error);
     throw error;
   }
-}
-
-export function generateProfileId(): string {
-  return `profile_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
 export function shortenAddress(address: string, chars = 4): string {

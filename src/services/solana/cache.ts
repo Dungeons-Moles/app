@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import type { CachedProfileData } from '@/types/solana';
+import { getWebStorage } from '@/utils/storage';
 
 const CACHE_PREFIX = 'solana_profile_';
 const CACHE_TTL = 5 * 60 * 1000;
@@ -10,24 +11,6 @@ export interface CachedProfile {
   data: CachedProfileData;
   timestamp: number;
   walletAddress: string;
-}
-
-function getWebStorage(): Storage | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    if (!window.localStorage) {
-      return null;
-    }
-    const testKey = '__storage_test__';
-    window.localStorage.setItem(testKey, '1');
-    window.localStorage.removeItem(testKey);
-    return window.localStorage;
-  } catch (error) {
-    return null;
-  }
 }
 
 function getCacheKey(address: string) {

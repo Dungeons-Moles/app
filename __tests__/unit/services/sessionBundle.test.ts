@@ -188,9 +188,6 @@ describe('Session Bundle Constants', () => {
       DEFAULT_SESSION_SIGNER_FUNDING,
       MAP_WIDTH,
       MAP_HEIGHT,
-      MAX_SESSIONS,
-      MAX_ENEMIES,
-      INITIAL_GEAR_SLOTS,
       RUN_PRICE_LAMPORTS,
       RUNS_PER_PURCHASE,
     } = await import('@/services/solana/constants');
@@ -198,9 +195,6 @@ describe('Session Bundle Constants', () => {
     expect(DEFAULT_SESSION_SIGNER_FUNDING).toBe(100_000_000); // 0.1 SOL
     expect(MAP_WIDTH).toBe(9);
     expect(MAP_HEIGHT).toBe(9);
-    expect(MAX_SESSIONS).toBe(40);
-    expect(MAX_ENEMIES).toBe(10);
-    expect(INITIAL_GEAR_SLOTS).toBe(4);
     expect(RUN_PRICE_LAMPORTS).toBe(50_000_000); // 0.05 SOL
     expect(RUNS_PER_PURCHASE).toBe(20);
   });
