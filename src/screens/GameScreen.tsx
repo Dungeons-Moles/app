@@ -596,6 +596,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [duelCompleteVisible, setDuelCompleteVisible] = useState(false);
   const [pendingWeaponSwap, setPendingWeaponSwap] = useState<{ optionIndex: number; toolName: string } | null>(null);
   const [isDuelFinalizing, setIsDuelFinalizing] = useState(false);
+  const isDuelFinalizingRef = useRef(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
   const [showSkipToEow, setShowSkipToEow] = useState(false);
   const [isSkippingToEow, setIsSkippingToEow] = useState(false);
@@ -1568,7 +1569,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // First player sees a "waiting for opponent" modal.
   // Second player sees the PvP combat animation.
   const handleDuelWeek3Completion = useCallback(async () => {
-    if (!sessionPda || !wallet.publicKey || isDuelFinalizing) return;
+    if (!sessionPda || !wallet.publicKey || isDuelFinalizingRef.current) return;
+    isDuelFinalizingRef.current = true;
     setIsDuelFinalizing(true);
 
     try {
@@ -1733,10 +1735,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       await endSessionWithSessionSigner().catch(() => queueEndGame(0, true).catch(() => {}));
       navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
     } finally {
+      isDuelFinalizingRef.current = false;
       setIsDuelFinalizing(false);
     }
   }, [
-    sessionPda, wallet.publicKey, isDuelFinalizing, connection, gameplayReadConnection,
+    sessionPda, wallet.publicKey, connection, gameplayReadConnection,
     undelegateCurrentSession, getSessionSignerKeypair, queueEndGame, endSessionWithSessionSigner,
     navigation, onChainState,
   ]);
