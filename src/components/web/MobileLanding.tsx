@@ -47,6 +47,15 @@ function DiscordIcon() {
   );
 }
 
+function DocsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 3.5L18.5 8H14V3.5zM6 20V4h6v6h6v10H6z" />
+      <path d="M8 13h8v1.5H8zm0 3h8v1.5H8zm0-6h4v1.5H8z" />
+    </svg>
+  );
+}
+
 /* ── Ink Button ─────────────────────────────────────────────── */
 
 function InkButton({
@@ -303,6 +312,12 @@ export function MobileLanding() {
               label="Join Discord"
               href="https://discord.gg/rxUeYfc33D"
               delay={0.7}
+            />
+            <InkButton
+              icon={<DocsIcon />}
+              label="Documentation"
+              href="https://docs.dungeonsandmoles.com/"
+              delay={0.8}
             />
           </div>
 
