@@ -497,204 +497,22 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
         {/* Tab Content */}
         <View style={[styles.tabContent, isCompact && compactStyles.tabContent]}>
           {activeTab === 'skins' && (
-            <ScrollView
-              style={styles.nftScrollView}
-              contentContainerStyle={[styles.nftScrollContent, isCompact && compactStyles.nftScrollContent]}
-            >
-              {marketplaceLoading && (
-                <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} />
-              )}
-              {marketplaceError && (
-                <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
-                  {marketplaceError}
+            <View style={styles.comingSoonContainer}>
+              <View style={styles.comingSoonBanner}>
+                <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                  COMING SOON
                 </Text>
-              )}
-
-              {/* My Skins */}
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  isCompact && compactStyles.sectionTitle,
-                  isController && sectionFocus === 0 && styles.sectionTitleActive,
-                ]}
-              >
-                My Skins
-              </Text>
-              {sortedSkins.length === 0 ? (
-                <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
-                  No skins yet
-                </Text>
-              ) : (
-                <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
-                  {sortedSkins.map((skin, idx) => {
-                    const isListed = skinListings.some((l) => l.listing.asset.equals(skin.address));
-                    const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
-                    const canList = !isListed && !isEquipped;
-                    return (
-                      <FocusGlow
-                        key={skin.address.toBase58()}
-                        active={isController && sectionFocus === 0 && nftFocus === idx}
-                      >
-                        <NftCard
-                          name={skin.name}
-                          image={getSkinImage(skin.name)}
-                          isEquipped={isEquipped}
-                          actionLabel={canList ? 'List' : undefined}
-                          onAction={
-                            canList ? () => handleListForSale(skin, skin.collection) : undefined
-                          }
-                          isCompact={isCompact}
-                        />
-                      </FocusGlow>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* For Sale */}
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  isCompact && compactStyles.sectionTitle,
-                  isController && sectionFocus === 1 && styles.sectionTitleActive,
-                ]}
-              >
-                For Sale
-              </Text>
-              {skinListings.length === 0 ? (
-                <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
-                  No skins for sale
-                </Text>
-              ) : (
-                <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
-                  {skinListings.map((listing, idx) => {
-                    const priceSol = Number(listing.listing.priceLamports) / LAMPORTS_PER_SOL;
-                    const isOwnListing = userSkins.some((s) =>
-                      s.address.equals(listing.listing.asset)
-                    );
-                    return (
-                      <FocusGlow
-                        key={listing.listing.asset.toBase58()}
-                        active={isController && sectionFocus === 1 && nftFocus === idx}
-                      >
-                        <NftCard
-                          name={listing.asset.name}
-                          image={getSkinImage(listing.asset.name)}
-                          priceSol={priceSol}
-                          actionLabel={isOwnListing ? 'Cancel' : 'Buy'}
-                          onAction={
-                            isOwnListing
-                              ? () => handleCancelListing(listing)
-                              : () => handleBuyNft(listing)
-                          }
-                          disabled={marketplaceLoading}
-                          isCompact={isCompact}
-                        />
-                      </FocusGlow>
-                    );
-                  })}
-                </View>
-              )}
-            </ScrollView>
+              </View>
+            </View>
           )}
           {activeTab === 'items' && (
-            <ScrollView
-              style={styles.nftScrollView}
-              contentContainerStyle={styles.nftScrollContent}
-            >
-              {marketplaceLoading && (
-                <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} />
-              )}
-
-              {/* My Relic Items */}
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  isCompact && compactStyles.sectionTitle,
-                  isController && sectionFocus === 0 && styles.sectionTitleActive,
-                ]}
-              >
-                My Relic Items
-              </Text>
-              {userNftItems.length === 0 ? (
-                <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
-                  No relic items yet
+            <View style={styles.comingSoonContainer}>
+              <View style={styles.comingSoonBanner}>
+                <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                  COMING SOON
                 </Text>
-              ) : (
-                <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
-                  {userNftItems.map((item, idx) => {
-                    const info = findNftItemInfo(item.name) ?? null;
-                    const isListed = itemListings.some((l) => l.listing.asset.equals(item.address));
-                    return (
-                      <FocusGlow
-                        key={item.address.toBase58()}
-                        active={isController && sectionFocus === 0 && nftFocus === idx}
-                      >
-                        <NftCard
-                          name={info?.name ?? item.name}
-                          image={info?.image}
-                          emoji={info?.emoji ?? '\u{2728}'}
-                          rarity={info?.rarity}
-                          actionLabel={!isListed ? 'List' : undefined}
-                          onAction={
-                            !isListed ? () => handleListForSale(item, item.collection) : undefined
-                          }
-                          isCompact={isCompact}
-                        />
-                      </FocusGlow>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* For Sale */}
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  isCompact && compactStyles.sectionTitle,
-                  isController && sectionFocus === 1 && styles.sectionTitleActive,
-                ]}
-              >
-                For Sale
-              </Text>
-              {itemListings.length === 0 ? (
-                <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
-                  No items for sale
-                </Text>
-              ) : (
-                <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
-                  {itemListings.map((listing, idx) => {
-                    const info = findNftItemInfo(listing.asset.name) ?? null;
-                    const priceSol = Number(listing.listing.priceLamports) / LAMPORTS_PER_SOL;
-                    const isOwnListing = userNftItems.some((i) =>
-                      i.address.equals(listing.listing.asset)
-                    );
-                    return (
-                      <FocusGlow
-                        key={listing.listing.asset.toBase58()}
-                        active={isController && sectionFocus === 1 && nftFocus === idx}
-                      >
-                        <NftCard
-                          name={info?.name ?? listing.asset.name}
-                          image={info?.image}
-                          emoji={info?.emoji ?? '\u{2728}'}
-                          rarity={info?.rarity}
-                          priceSol={priceSol}
-                          actionLabel={isOwnListing ? 'Cancel' : 'Buy'}
-                          onAction={
-                            isOwnListing
-                              ? () => handleCancelListing(listing)
-                              : () => handleBuyNft(listing)
-                          }
-                          disabled={marketplaceLoading}
-                          isCompact={isCompact}
-                        />
-                      </FocusGlow>
-                    );
-                  })}
-                </View>
-              )}
-            </ScrollView>
+              </View>
+            </View>
           )}
           {activeTab === 'pve' && (
             <View style={[styles.pveContent, isCompact && compactStyles.pveContent]}>
@@ -997,11 +815,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  comingSoonText: {
-    fontFamily: Typography.header,
-    fontSize: 22,
-    color: '#8a7a6a',
-  },
   pveContent: {
     flexDirection: 'column',
     alignItems: 'center',
@@ -1112,6 +925,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  comingSoonContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  comingSoonBanner: {
+    backgroundColor: '#CC2222',
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    transform: [{ rotate: '-12deg' }],
+    borderRadius: 4,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+  },
+  comingSoonText: {
+    fontFamily: Typography.header,
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
 });
 
 const compactStyles = StyleSheet.create({
@@ -1152,7 +993,8 @@ const compactStyles = StyleSheet.create({
     fontSize: 24,
   },
   comingSoonText: {
-    fontSize: 38,
+    fontSize: 48,
+    letterSpacing: 6,
   },
   pveContent: {
     gap: 40,

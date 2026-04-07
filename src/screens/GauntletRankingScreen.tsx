@@ -35,7 +35,6 @@ const BOOK_IMAGE_COMPACT = require('../../assets/ui/backgrounds/book-compact.web
 const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
 const RANKING_TITLE = require('../../assets/ui/text/ranking.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 const MAX_RANK_ROWS = 100;
@@ -216,7 +215,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const isFocused = useIsFocused();
-  const [actionFocus, setActionFocus] = useState(0); // 0 = Refresh, 1 = Prev, 2 = Next
+  const [actionFocus, setActionFocus] = useState(0); // 0 = Prev, 1 = Next
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const { playSfx } = useAudio();
@@ -242,12 +241,11 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       onB: handleBack,
       onStart: () => setShowSettingsModal(true),
       onA: () => {
-        if (actionFocus === 0) void loadRanking();
-        else if (actionFocus === 1) setPage((p) => Math.max(0, p - 1));
-        else if (actionFocus === 2) setPage((p) => Math.min(totalPages - 1, p + 1));
+        if (actionFocus === 0) setPage((p) => Math.max(0, p - 1));
+        else if (actionFocus === 1) setPage((p) => Math.min(totalPages - 1, p + 1));
       },
       onDPadLeft: () => setActionFocus((f) => Math.max(0, f - 1)),
-      onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 2 : 0, f + 1)),
+      onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 1 : 0, f + 1)),
     },
     isController && isFocused && !showSettingsModal
   );
@@ -413,30 +411,6 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
             {/* Left page */}
             <View style={styles.column}>
               {leftItems.map(renderRow)}
-              <View style={styles.columnFooter}>
-                <FocusGlow active={isController && actionFocus === 0}>
-                  <TouchableOpacity
-                    onPress={() => void loadRanking()}
-                    activeOpacity={0.7}
-                    disabled={isLoading}
-                  >
-                    <CachedImageBackground
-                      source={buttonV4Source}
-                      style={[styles.actionButton, isCompact && compactStyles.actionButton]}
-                      resizeMode="stretch"
-                    >
-                      <Text
-                        style={[
-                          styles.buttonTextPrimary,
-                          isCompact && compactStyles.buttonTextPrimary,
-                        ]}
-                      >
-                        Refresh
-                      </Text>
-                    </CachedImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
-              </View>
             </View>
 
             {/* Right page */}
@@ -447,7 +421,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
               {totalPages > 1 && (
                 <View style={styles.columnFooter}>
                   <View style={styles.paginationRow}>
-                    <FocusGlow active={isController && actionFocus === 1}>
+                    <FocusGlow active={isController && actionFocus === 0}>
                       <TouchableOpacity
                         onPress={() => setPage((p) => Math.max(0, p - 1))}
                         activeOpacity={0.7}
@@ -473,7 +447,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                     <Text style={[styles.pageIndicator, isCompact && compactStyles.pageIndicator]}>
                       {page + 1} / {totalPages}
                     </Text>
-                    <FocusGlow active={isController && actionFocus === 2}>
+                    <FocusGlow active={isController && actionFocus === 1}>
                       <TouchableOpacity
                         onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                         activeOpacity={0.7}

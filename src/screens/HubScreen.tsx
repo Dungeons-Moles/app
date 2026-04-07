@@ -1670,66 +1670,29 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     )}
                   </View>
 
-                  <ScrollView
-                    style={{ flex: 1, width: '100%' }}
-                    contentContainerStyle={{ gap: 8, paddingBottom: 8, paddingHorizontal: 10 }}
-                  >
-                    {questsLoading ? (
-                      <ActivityIndicator
-                        color="#3d2b1f"
-                        size={isCompact ? 'large' : 'small'}
-                        style={{ marginTop: 20 }}
-                      />
-                    ) : effectiveQuests.length === 0 ? (
-                      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <Text
-                          style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}
-                        >
-                          No active quests
-                        </Text>
-                      </View>
-                    ) : (
-                      <>
-                        {effectiveQuests.map((quest, idx) => {
-                          const objectiveLabel = getObjectiveLabel(quest.definition);
-                          const rewardLabel = getRewardLabel(quest.definition);
-                          const qt = quest.definition.questType;
-                          const type =
-                            'daily' in qt ? 'Daily' : 'weekly' in qt ? 'Weekly' : 'Seasonal';
-                          return (
-                            <FocusGlow
-                              key={quest.definition.questId}
-                              active={isController && questsFocus === idx}
-                            >
-                              <QuestCard
-                                objectiveText={objectiveLabel}
-                                questType={type}
-                                progress={quest.progress?.progress ?? 0}
-                                target={quest.definition.objectiveCount}
-                                rewardText={rewardLabel}
-                                rewardIcon={getRewardIcon(quest.definition)}
-                                isCompleted={quest.progress?.completed ?? false}
-                                isClaimed={quest.progress?.claimed ?? false}
-                                isAccepted={quest.progress !== null}
-                                onAccept={async () => {
-                                  if (quest.definition.questId >= 9000) return;
-                                  playSfx('ui_click');
-                                  await acceptQuest(quest.definition.questId);
-                                }}
-                                onClaim={async () => {
-                                  if (quest.definition.questId >= 9000) return;
-                                  playSfx('ui_click');
-                                  await claimReward(quest.definition.questId);
-                                }}
-                                disabled={questsLoading}
-                                isCompact={isCompact}
-                              />
-                            </FocusGlow>
-                          );
-                        })}
-                      </>
-                    )}
-                  </ScrollView>
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{
+                      backgroundColor: '#CC2222',
+                      paddingVertical: isCompact ? 18 : 10,
+                      paddingHorizontal: isCompact ? 56 : 32,
+                      transform: [{ rotate: '-12deg' }],
+                      borderRadius: 4,
+                    }}>
+                      <Text style={{
+                        fontFamily: Typography.header,
+                        fontSize: isCompact ? 42 : 22,
+                        fontWeight: 'bold',
+                        color: '#FFFFFF',
+                        textAlign: 'center',
+                        letterSpacing: 4,
+                        textShadowColor: 'rgba(0, 0, 0, 0.5)',
+                        textShadowOffset: { width: 2, height: 2 },
+                        textShadowRadius: 4,
+                      }}>
+                        COMING SOON
+                      </Text>
+                    </View>
+                  </View>
                   {isController && (
                     <View
                       style={[
