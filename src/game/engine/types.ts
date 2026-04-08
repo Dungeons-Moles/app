@@ -532,4 +532,6 @@ export interface GameState {
   activeItemPool?: Uint8Array;
   /** Total moves made this run (incremented on each successful move) */
   totalMoves: number;
+  /** Total enemies defeated this run */
+  enemiesDefeated: number;
 }

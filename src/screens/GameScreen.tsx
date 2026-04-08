@@ -3180,7 +3180,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             level: profile?.currentLevel ?? 1,
             week: state.time.week,
             phase: localPhaseNumber,
-            enemiesDefeated: 0,
+            enemiesDefeated: state.enemiesDefeated ?? 0,
           };
           setDefeatOverlayVisible(true);
         }

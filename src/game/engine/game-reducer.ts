@@ -1166,6 +1166,8 @@ function handleResolveCombat(
     };
   }
 
+  const newEnemiesDefeated = (state.enemiesDefeated ?? 0) + 1;
+
   // Victory - return to exploration (or victory screen for final boss)
   if (state.phase === GamePhase.BossFight && state.time.week === 3) {
     return {
@@ -1174,6 +1176,7 @@ function handleResolveCombat(
       player: updatedPlayer,
       rngState: updatedRngState,
       combat: { ...combatState, result: 'VICTORY' },
+      enemiesDefeated: newEnemiesDefeated,
     };
   }
 
@@ -1227,6 +1230,7 @@ function handleResolveCombat(
       enemies: updatedEnemies,
     },
     combat: null,
+    enemiesDefeated: newEnemiesDefeated,
   };
 }
 
@@ -1569,6 +1573,7 @@ function handleReturnToMenu(state: GameState): GameState {
     wallHighlight: null,
     fastTravel: null,
     totalMoves: 0,
+    enemiesDefeated: 0,
   };
 }
 
@@ -1804,13 +1809,17 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState, week
   // When both flags are true (e.g., field combat death on the same move that
   // triggered the boss phase), the boss useEffect will fire and show CombatScreen.
   if (confirmedState.bossFightReady) {
+    // Keep the current week/boss display until after combat completes.
+    // The on-chain state already advanced to the next week, but showing that
+    // in the navbar/sidebar before the boss fight screen appears is a visual glitch.
     return {
       ...state,
       player: updatedPlayer,
       map: finalMap,
       time: {
-        ...updatedTime,
+        ...state.time,
         phase: TimePhase.Boss,
+        movesRemaining: 0,
       },
       wallHighlight: null,
     };

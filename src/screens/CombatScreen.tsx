@@ -553,7 +553,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
                 phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
                 killedBy: combatState.resolvedCombat?.enemy.name,
                 runMode: capturedRunMode,
-                enemiesDefeated: combatInput?.enemiesDefeated ?? 0,
+                enemiesDefeated: combatInput?.enemiesDefeated ?? (gameState?.enemiesDefeated ?? 0),
               },
             },
           ],
@@ -595,7 +595,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         navigation.replace('Victory', {
           level: levelReached,
           totalMoves: resolvedTotalMoves,
-          enemiesDefeated: combatInput?.enemiesDefeated ?? 0,
+          enemiesDefeated: combatInput?.enemiesDefeated ?? ((gameState?.enemiesDefeated ?? 0) + 1),
           levelUnlocked: levelReached + 1,
           itemUnlocked,
           runMode: capturedRunMode,
@@ -610,7 +610,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');
-        navigation.goBack();
+        navigation.navigate('Game');
       }
     } finally {
       isResolvingDuelRef.current = false;

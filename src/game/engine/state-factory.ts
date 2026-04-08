@@ -46,6 +46,7 @@ export function createInitialGameState(): GameState {
     fastTravel: null,
     debug: DEFAULT_DEBUG_STATE,
     totalMoves: 0,
+    enemiesDefeated: 0,
   };
 }
 
@@ -103,6 +104,7 @@ export function initializeGame(
     wallHighlight: null,
     fastTravel: null,
     totalMoves: 0,
+    enemiesDefeated: 0,
     activeItemPool: state.activeItemPool ?? createStarterBitmask(),
   };
 }
