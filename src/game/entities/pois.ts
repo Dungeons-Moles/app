@@ -248,21 +248,38 @@ function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POI
 
 // ============================================================================
 // T087: Supply Cache (L2)
-// Pick 1 of 3 Common items
+// Pick 1 of 3 items — rarity scales by act (matches on-chain SUPPLY_CACHE_RARITY)
 // ============================================================================
 
+const SUPPLY_CACHE_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [70, 30, 0, 0], // Act 1: 70% Common, 30% Rare
+  [60, 40, 0, 0], // Act 2: 60% Common, 40% Rare
+  [50, 50, 0, 0], // Act 3: 50% Common, 50% Rare
+  [40, 60, 0, 0], // Act 4: 40% Common, 60% Rare
+];
+
 function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  // T040: Filter common gear by active item pool
-  const allCommonGear = getGearByRarity('COMMON');
-  const commonGear = filterGearByPool(allCommonGear, state.activeItemPool);
   const options: POIOption[] = [];
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
+  const act = getActForCampaignLevel(state.campaignLevel);
+  const selectedIds = new Set<string>();
 
-  // Generate 3 unique random items (weighted by boss weakness)
-  const pickedGear = pickUniqueWeighted(rng, commonGear, 3, weaknessTags);
-  for (const gearDef of pickedGear) {
-    const gear = createGearInstance(gearDef.id);
+  // Generate 3 unique random items with act-scaled rarity
+  for (let i = 0; i < 3; i += 1) {
+    const rolledRarity = rollShopRarity(rng, SUPPLY_CACHE_RARITY, act);
+    let pickedGearDef: ReturnType<typeof getGearByRarity>[number] | null = null;
+    for (const rarity of smugglerRarityFallbackOrder(rolledRarity)) {
+      const gearPool = filterGearByPool(getGearByRarity(rarity), state.activeItemPool);
+      const picked = pickUniqueWeighted(rng, gearPool, 1, weaknessTags, selectedIds)[0];
+      if (picked) {
+        pickedGearDef = picked;
+        break;
+      }
+    }
+    if (!pickedGearDef) continue;
+    selectedIds.add(pickedGearDef.id);
+    const gear = createGearInstance(pickedGearDef.id);
     options.push({
       label: gear.name,
       description: getGearDescription(gear),
@@ -275,18 +292,40 @@ function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption
 
 // ============================================================================
 // T088: Tool Crate (L3)
-// Pick 1 of 3 Common Tools
+// Pick 1 of 3 Tools — rarity scales by act (matches on-chain TOOL_CRATE_RARITY)
 // ============================================================================
 
+const TOOL_CRATE_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [60, 30, 10, 0], // Act 1: 60% Common, 30% Rare, 10% Heroic
+  [50, 30, 20, 0], // Act 2: 50% Common, 30% Rare, 20% Heroic
+  [40, 35, 25, 0], // Act 3: 40% Common, 35% Rare, 25% Heroic
+  [30, 40, 30, 0], // Act 4: 30% Common, 40% Rare, 30% Heroic
+];
+
 function generateToolCrateOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  const commonTools = getToolsByRarity('COMMON').filter((tool) => tool.id !== 'T0' && tool.id !== 'T9');
   const options: POIOption[] = [];
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
+  const act = getActForCampaignLevel(state.campaignLevel);
+  const selectedIds = new Set<string>();
 
-  const pickedTools = pickUniqueWeighted(rng, commonTools, 3, weaknessTags);
-  for (const toolDef of pickedTools) {
-    const tool = createToolInstance(toolDef.id);
+  for (let i = 0; i < 3; i += 1) {
+    const rolledRarity = rollShopRarity(rng, TOOL_CRATE_RARITY, act);
+    let pickedToolDef: ReturnType<typeof getToolsByRarity>[number] | null = null;
+    for (const rarity of smugglerRarityFallbackOrder(rolledRarity)) {
+      const toolPool = filterGearByPool(
+        getToolsByRarity(rarity).filter((t) => t.id !== 'T0' && t.id !== 'T9' && t.id !== 'T17'),
+        state.activeItemPool
+      );
+      const picked = pickUniqueWeighted(rng, toolPool, 1, weaknessTags, selectedIds)[0];
+      if (picked) {
+        pickedToolDef = picked;
+        break;
+      }
+    }
+    if (!pickedToolDef) continue;
+    selectedIds.add(pickedToolDef.id);
+    const tool = createToolInstance(pickedToolDef.id);
     options.push({
       label: tool.name,
       description: getToolDescription(tool),
@@ -526,7 +565,7 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCo
   let pickedToolDef: ReturnType<typeof getToolsByRarity>[number] | null = null;
   for (const rarity of smugglerRarityFallbackOrder(rolledToolRarity)) {
     const toolPool = filterGearByPool(getToolsByRarity(rarity), state.activeItemPool).filter(
-      (toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9'
+      (toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9' && toolDef.id !== 'T17'
     );
     const picked = pickUniqueWeighted(rng, toolPool, 1, weaknessTags, selectedIds)[0];
     if (picked) {
@@ -550,7 +589,7 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCo
     // Defensive fallback: guarantee one tool slot in guest mode.
     const anyTool = getToolsByRarity('COMMON')
       .concat(getToolsByRarity('RARE'), getToolsByRarity('HEROIC'))
-      .filter((toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9');
+      .filter((toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9' && toolDef.id !== 'T17');
     const fallbackTool = pickUniqueWeighted(rng, anyTool, 1, weaknessTags, selectedIds)[0];
     if (fallbackTool) {
       selectedIds.add(fallbackTool.id);
@@ -791,21 +830,35 @@ export function generateRuneKilnOptions(state: GameState): POIOption[] {
 // Pick 1 of 3 Common items (weighted by boss weakness)
 // ============================================================================
 
+const GEODE_VAULT_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0, 0, 95, 5],  // Act 1: 95% Heroic, 5% Mythic
+  [0, 0, 90, 10], // Act 2: 90% Heroic, 10% Mythic
+  [0, 0, 80, 20], // Act 3: 80% Heroic, 20% Mythic
+  [0, 0, 70, 30], // Act 4: 70% Heroic, 30% Mythic
+];
+
 function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  // No pool filter — Geode Vault is a premium reward POI with access to all HEROIC items
-  const heroicGear = getGearByRarity('HEROIC');
+  // No pool filter — Geode Vault is a premium reward POI
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
+  const act = getActForCampaignLevel(state.campaignLevel);
   const options: POIOption[] = [];
+  const selectedIds = new Set<string>();
 
-  if (heroicGear.length === 0) {
-    return [];
-  }
-
-  const pickedGear = pickUniqueWeighted(rng, heroicGear, 3, weaknessTags);
-
-  for (const gearDef of pickedGear) {
-    const gear = createGearInstance(gearDef.id);
+  for (let i = 0; i < 3; i += 1) {
+    const rolledRarity = rollShopRarity(rng, GEODE_VAULT_RARITY, act);
+    let pickedGearDef: ReturnType<typeof getGearByRarity>[number] | null = null;
+    for (const rarity of smugglerRarityFallbackOrder(rolledRarity)) {
+      const gearPool = getGearByRarity(rarity);
+      const picked = pickUniqueWeighted(rng, gearPool, 1, weaknessTags, selectedIds)[0];
+      if (picked) {
+        pickedGearDef = picked;
+        break;
+      }
+    }
+    if (!pickedGearDef) continue;
+    selectedIds.add(pickedGearDef.id);
+    const gear = createGearInstance(pickedGearDef.id);
     options.push({
       label: gear.name,
       description: getGearDescription(gear),
@@ -818,27 +871,40 @@ function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[
 
 // ============================================================================
 // T086: Counter Cache (L13)
-// Pick 1 of 3 items from boss weakness tags only
+// Pick 1 of 3 items from boss weakness tags only — rarity scales by act
 // ============================================================================
+
+const COUNTER_CACHE_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [60, 40, 0, 0],  // Act 1
+  [40, 50, 10, 0], // Act 2
+  [30, 45, 25, 0], // Act 3
+  [20, 40, 35, 5], // Act 4
+];
 
 function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
+  const act = getActForCampaignLevel(state.campaignLevel);
   const options: POIOption[] = [];
+  const selectedIds = new Set<string>();
 
-  // Filter gear by weakness tags (no pool or rarity filter — counter items should always be available)
-  const validGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
-    return def.tags.some((tag) => weaknessTags.includes(tag));
-  });
-
-  if (validGear.length === 0) {
-    return [];
-  }
-
-  // Generate 3 unique items
-  const pickedGear = pickUniqueById(rng, validGear, 3, (gearDef) => gearDef.id);
-  for (const gearDef of pickedGear) {
-    const gear = createGearInstance(gearDef.id);
+  for (let i = 0; i < 3; i += 1) {
+    const rolledRarity = rollShopRarity(rng, COUNTER_CACHE_RARITY, act);
+    // Filter gear by rolled rarity AND boss weakness tags
+    let pickedGearDef: ReturnType<typeof getGearByRarity>[number] | null = null;
+    for (const rarity of smugglerRarityFallbackOrder(rolledRarity)) {
+      const gearPool = getGearByRarity(rarity).filter((def) =>
+        def.tags.some((tag) => weaknessTags.includes(tag))
+      );
+      const picked = pickUniqueWeighted(rng, gearPool, 1, weaknessTags, selectedIds)[0];
+      if (picked) {
+        pickedGearDef = picked;
+        break;
+      }
+    }
+    if (!pickedGearDef) continue;
+    selectedIds.add(pickedGearDef.id);
+    const gear = createGearInstance(pickedGearDef.id);
     options.push({
       label: gear.name,
       description: getGearDescription(gear),

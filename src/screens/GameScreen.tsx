@@ -53,6 +53,7 @@ import { TUTORIAL_SEEN_KEY } from '../components/ui/tutorialPages';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { usePreventBackNavigation } from '../hooks/usePreventBackNavigation';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useInputMode } from '../hooks/useInputMode';
@@ -622,6 +623,7 @@ type GameScreenProps = {
 };
 
 export function GameScreen({ navigation }: GameScreenProps) {
+  usePreventBackNavigation();
   const {
     state,
     dispatch,

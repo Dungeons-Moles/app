@@ -1435,6 +1435,13 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       );
     }
 
+    // When a combatant is dead, zero out ARM so the death state never shows
+    // lingering armor from post-lethal on-hit/on-struck effects that granted ARM
+    // after the armor-depleting blow. Most visible at super-fast speed where the
+    // intermediate ARM=0 frame is imperceptible.
+    if (player.hp <= 0) player.arm = 0;
+    if (enemy.hp <= 0) enemy.arm = 0;
+
     return {
       player,
       enemy,

@@ -10,6 +10,7 @@ import {
 import type { ItemRarity } from '@/game/engine/types';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
+import { ITEM_RARITY_FILL } from '@/utils/rarity-colors';
 
 const squareSource = require('../../../assets/ui/frames/square.webp');
 const squareBlueSource = require('../../../assets/ui/frames/square-blue.webp');
@@ -32,6 +33,7 @@ interface SimplifiedItemOptionProps {
   statDisplay?: string;
   effectDescription?: string;
   rarity: ItemRarity;
+  baseRarity?: ItemRarity;
   itemName: string;
   selected?: boolean;
   disabled?: boolean;
@@ -45,6 +47,7 @@ export function SimplifiedItemOption({
   statDisplay,
   effectDescription,
   rarity,
+  baseRarity,
   itemName,
   selected = false,
   disabled = false,
@@ -57,6 +60,8 @@ export function SimplifiedItemOption({
 
   const handlePressIn = useCallback(() => setPressed(true), []);
   const handlePressOut = useCallback(() => setPressed(false), []);
+
+  const rarityFillColor = baseRarity ? ITEM_RARITY_FILL[baseRarity] : undefined;
 
   const containerStyle = useMemo(
     () => [
@@ -87,6 +92,17 @@ export function SimplifiedItemOption({
       accessibilityLabel={`${itemName}, ${statDisplay ?? effectDescription ?? 'No stats'}, ${rarity.toLowerCase()} rarity`}
       accessibilityHint={`Long press to view ${itemName} details`}
     >
+      {rarityFillColor && (
+        <View
+          style={{
+            position: 'absolute',
+            width: '95%',
+            height: '95%',
+            backgroundColor: rarityFillColor,
+            borderRadius: 4,
+          }}
+        />
+      )}
       <Image
         source={getFrameForRarity(rarity)}
         style={{

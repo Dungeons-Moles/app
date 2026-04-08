@@ -18,6 +18,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { usePreventBackNavigation } from '../hooks/usePreventBackNavigation';
 import { useKeepAwake } from 'expo-keep-awake';
 import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
@@ -84,6 +85,7 @@ function buildDuelCombatant(
  */
 export function CombatScreen({ navigation, route }: CombatScreenProps) {
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
+  usePreventBackNavigation();
 
   return (
     <CombatProvider initialSpeed={defaultCombatSpeed} onSpeedChange={updateDefaultCombatSpeed}>

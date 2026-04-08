@@ -64,7 +64,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/supply-cache.webp'),
     rarity: 'COMMON',
     interaction: 'ITEM_SELECTION',
-    description: 'Pick 1 of 3 Common items',
+    description: 'Pick 1 of 3 Common/Rare items',
   },
 
   // ============================================================================
@@ -195,7 +195,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/geode-vault.webp'),
     rarity: 'RARE',
     interaction: 'ITEM_SELECTION',
-    description: 'Pick 1 of 3 Heroic items',
+    description: 'Pick 1 of 3 Heroic/Mythic items',
   },
 
   // ============================================================================

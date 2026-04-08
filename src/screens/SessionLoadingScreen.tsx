@@ -12,6 +12,7 @@ import { CachedImage as Image } from '../components/common/CachedImage';
 import { preloadCriticalImages } from '@/utils/preloadCriticalImages';
 import { GAME_PRELOAD_ASSETS } from '@/constants/criticalImages';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { usePreventBackNavigation } from '../hooks/usePreventBackNavigation';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -55,6 +56,7 @@ type SessionLoadingScreenProps = {
 };
 
 export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreenProps) {
+  usePreventBackNavigation();
   const isCompact = useScreenVariant() === 'compact';
   const { mode: userProfileMode } = useProfile();
 

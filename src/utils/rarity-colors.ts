@@ -18,9 +18,9 @@ export const ITEM_RARITY_COLORS: Record<ItemRarity, string> = {
   COMMON: '#A0A0A0',
   SAPPHIRE: '#4A90D9',
   GOLDEN: '#FFD700',
-  RARE: '#4169E1',
-  HEROIC: '#9932CC',
-  MYTHIC: '#FF4500',
+  RARE: '#A855F7',
+  HEROIC: '#F97316',
+  MYTHIC: '#FFD700',
 };
 
 export const ITEM_RARITY_BG_COLORS: Record<ItemRarity, string> = {
@@ -30,4 +30,11 @@ export const ITEM_RARITY_BG_COLORS: Record<ItemRarity, string> = {
   RARE: '#dbeafe',
   HEROIC: '#ede9fe',
   MYTHIC: '#ffedd5',
+};
+
+/** Subtle rarity fill for item squares (COMMON has no fill) */
+export const ITEM_RARITY_FILL: Partial<Record<ItemRarity, string>> = {
+  RARE: 'rgba(168, 85, 247, 0.15)',
+  HEROIC: 'rgba(249, 115, 22, 0.15)',
+  MYTHIC: 'rgba(255, 215, 0, 0.15)',
 };

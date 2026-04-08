@@ -39,6 +39,7 @@ import { SCRAP_REFUND_BY_RARITY } from '@/game/entities/pois';
 import { GEAR_DEFINITIONS } from '@/data/gear';
 import type { POIId } from '@/game/engine/types';
 import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
+import { ITEM_RARITY_FILL, ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
 import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
 import { Typography } from '@/theme/typography';
@@ -148,23 +149,8 @@ function getItemRarity(item: Tool | Gear): ItemRarity {
 }
 
 function getRarityColor(item: Tool | Gear): string {
-  const rarity = getItemRarity(item);
-  switch (rarity) {
-    case 'COMMON':
-      return '#A0A0A0';
-    case 'SAPPHIRE':
-      return '#4A90D9';
-    case 'GOLDEN':
-      return '#FFD700';
-    case 'RARE':
-      return '#4169E1';
-    case 'HEROIC':
-      return '#9932CC';
-    case 'MYTHIC':
-      return '#FF4500';
-    default:
-      return '#A0A0A0';
-  }
+  const baseRarity = 'baseRarity' in item ? item.baseRarity : item.rarity;
+  return ITEM_RARITY_COLORS[baseRarity] ?? '#A0A0A0';
 }
 
 const TIER_BG_COLORS: Record<number, string> = {
@@ -1102,6 +1088,7 @@ export const POIModal = React.memo(function POIModal({
                       statDisplay={statDisplay}
                       effectDescription={effectDescription}
                       rarity={rarity}
+                      baseRarity={option.item && 'baseRarity' in option.item ? option.item.baseRarity : undefined}
                       itemName={itemName}
                       selected={isController && focusedIndex === index}
                       disabled={option.disabled}
@@ -1289,6 +1276,16 @@ export const POIModal = React.memo(function POIModal({
                         activeOpacity={0.7}
                         disabled={false}
                       >
+                        {(() => {
+                          const fillColor = option.item && 'baseRarity' in option.item
+                            ? ITEM_RARITY_FILL[option.item.baseRarity]
+                            : option.item && 'rarity' in option.item
+                              ? ITEM_RARITY_FILL[option.item.rarity]
+                              : undefined;
+                          return fillColor ? (
+                            <View style={{ position: 'absolute', width: '95%', height: '95%', backgroundColor: fillColor, borderRadius: 4 }} />
+                          ) : null;
+                        })()}
                         <Image
                           source={getTierSquareInfo(option.item ? getItemRarity(option.item) : null).source}
                           style={{

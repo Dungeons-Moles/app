@@ -58,11 +58,11 @@ function getRarityColor(rarity: string): string {
     case 'GOLDEN':
       return '#B8860B'; // DarkGoldenRod
     case 'RARE':
-      return '#00008B'; // DarkBlue
+      return '#A855F7';
     case 'HEROIC':
-      return '#800080'; // Purple
+      return '#F97316';
     case 'MYTHIC':
-      return '#8B0000'; // DarkRed
+      return '#FFD700';
     default:
       return '#696969';
   }
@@ -77,11 +77,11 @@ function getOriginalRarityColor(rarity: string): string {
     case 'GOLDEN':
       return '#FFD700';
     case 'RARE':
-      return '#4169E1';
+      return '#A855F7';
     case 'HEROIC':
-      return '#9932CC';
+      return '#F97316';
     case 'MYTHIC':
-      return '#FF4500';
+      return '#FFD700';
     default:
       return '#A0A0A0';
   }
