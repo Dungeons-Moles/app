@@ -413,7 +413,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               )}
               <Text style={[boldBody, { marginTop: gap }]}>Status Effects</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                {'\u2022'} Chill: -1 strike/turn, +1 dmg/stack (max +3){'\n'}
+                {'\u2022'} Chill: -strikes by stack count (min 1), +1 dmg/stack (max +3){'\n'}
                 {'\u2022'} Rust: Lose ARM = stacks end of turn. Persists!{'\n'}
                 {'\u2022'} Bleed: Take dmg = stacks end of turn{'\n'}
                 {'\u2022'} Shrapnel: Consumes 1 stack when struck.{'\n'}{'   '}Reflects half ATK back
@@ -522,7 +522,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 <PoiRow
                   icon={ICON_GEODE}
                   name="Geode Vault"
-                  desc="Pick 1 of 3 powerful Heroic items. One-time."
+                  desc="Pick 1 of 3 Heroic or Mythic items. One-time."
                   s={s}
                   ns={ns}
                 />
@@ -714,7 +714,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 {isCompact
                   ? `Day = 50 moves, Night = 30 moves\n6 phases per week, 3 weeks per stage`
-                  : `Day: 50 moves, Night: 50 moves . 6 phases/week, 3 weeks/stage`}
+                  : `Day: 50 moves, Night: 30 moves . 6 phases/week, 3 weeks/stage`}
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Visibility</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
