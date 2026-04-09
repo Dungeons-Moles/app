@@ -13,6 +13,7 @@ import { RootStackParamList, type UnlockedItem } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useAudio, type BgmTrack } from '../contexts/AudioContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
@@ -102,6 +103,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
   const { playBgm } = useAudio();
+  const { autoResolveCombat } = useSettings();
   const {
     endSessionWithSessionSigner,
     undelegateCurrentSession,
@@ -147,14 +149,18 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Start combat when screen loads
   useEffect(() => {
-    // Play combat music immediately
+    // Play combat music immediately, unless auto-resolve is on for a non-boss fight
+    // (field enemy combat is resolved without showing CombatScreen in normal flow,
+    // so combat music should not play when the setting is enabled).
     const finalWeek = (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
     const track: BgmTrack = isBossFight
       ? currentWeek === finalWeek
         ? 'boss_week_3'
         : 'boss_week_1_2'
       : 'standard_combat';
-    playBgm(track, { crossfade: true, resume: false });
+    if (!autoResolveCombat || isBossFight) {
+      playBgm(track, { crossfade: true, resume: false });
+    }
 
     // Skip if combat already started
     if (combatState.combat) return;
@@ -243,6 +249,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     gameState?.rngState,
     isBossFight,
     playBgm,
+    autoResolveCombat,
   ]);
 
   // Eagerly start session teardown during combat animation.

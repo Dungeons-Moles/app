@@ -1475,7 +1475,7 @@ function applyRuneKilnEffect(state: GameState, optionIndex: number): GameState {
   const newInventory = state.player.inventory.filter((slot) => !slotsToRemove.includes(slot.index));
 
   // Add the upgraded item
-  const nextRarity: ItemRarity = currentRarity === 'COMMON' ? 'SAPPHIRE' : 'GOLDEN';
+  const nextRarity: ItemRarity = currentRarity === 'SAPPHIRE' ? 'GOLDEN' : 'SAPPHIRE';
   const upgradedGear = createGearInstance(gearDef.id, nextRarity);
 
   // Find next available slot

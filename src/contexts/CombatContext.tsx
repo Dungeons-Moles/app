@@ -1419,9 +1419,20 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     const maxIndex = Math.min(state.currentLogIndex, log.length - 1);
     const gold = { player: playerGold, enemy: enemyGold };
 
+    // Track death so post-kill healing entries can't raise HP above 0.
+    // Once a combatant's HP hits 0, it stays 0 for all subsequent entries.
+    // This prevents the HP bar from flickering above 0 after the killing blow,
+    // which is most visible at super-fast speed.
+    let playerDead = false;
+    let enemyDead = false;
+
     for (let index = 0; index < maxIndex; index += 1) {
       const entry = log[index];
       applyLogEntryToCombatants(entry, log, index, player, enemy, gold);
+      if (playerDead) player.hp = 0;
+      else if (player.hp <= 0) playerDead = true;
+      if (enemyDead) enemy.hp = 0;
+      else if (enemy.hp <= 0) enemyDead = true;
     }
 
     if (maxIndex >= 0 && log[maxIndex]) {
@@ -1434,6 +1445,10 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
         gold,
         state.currentContributionIndex
       );
+      if (playerDead) player.hp = 0;
+      else if (player.hp <= 0) playerDead = true;
+      if (enemyDead) enemy.hp = 0;
+      else if (enemy.hp <= 0) enemyDead = true;
     }
 
     // When a combatant is dead, zero out ARM so the death state never shows

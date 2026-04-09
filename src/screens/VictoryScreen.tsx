@@ -26,6 +26,7 @@ import { useAudio } from '../contexts/AudioContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
+import { GUEST_DIFFICULTY_CONFIGS } from '../game/engine/run-config';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -38,6 +39,11 @@ type VictoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Victory'>;
   route: RouteProp<RootStackParamList, 'Victory'>;
 };
+
+function getGuestDifficulty(level: number): string {
+  const config = Object.values(GUEST_DIFFICULTY_CONFIGS).find((c) => c.campaignLevel === level);
+  return config?.label ?? 'Easy';
+}
 
 export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const {
@@ -143,6 +149,8 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
           ? 'Finished Gauntlet'
           : runMode === RunMode.Duel
             ? 'Duel Complete'
+            : mode === 'guest'
+            ? `${getGuestDifficulty(level ?? 0)} Level Complete`
             : `Level ${level ?? 1} Complete`}
       </Text>
     </>
@@ -189,14 +197,15 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
       </Text>
 
       <View style={styles.statsRow}>
-        {mode !== 'guest' &&
-          (runMode === RunMode.Gauntlet ? (
-            <StatFrame label="Mode" value="Gauntlet" />
-          ) : runMode === RunMode.Duel ? (
-            <StatFrame label="Mode" value="Duels" />
-          ) : (
-            <StatFrame label="Level" value={level ?? 1} />
-          ))}
+        {runMode === RunMode.Gauntlet ? (
+          <StatFrame label="Mode" value="Gauntlet" />
+        ) : runMode === RunMode.Duel ? (
+          <StatFrame label="Mode" value="Duels" />
+        ) : mode === 'guest' ? (
+          <StatFrame label="Difficulty" value={getGuestDifficulty(level ?? 0)} />
+        ) : (
+          <StatFrame label="Level" value={level ?? 1} />
+        )}
         <StatFrame label="Total Moves" value={totalMoves ?? 0} />
         <StatFrame label="Enemies Defeated" value={defeated} />
       </View>
@@ -212,7 +221,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
         : Number((gauntletPoints as { toString: () => string }).toString());
 
   const UnlockDisplays = () => {
-    const hasLevel = showUnlock && levelUnlocked && !isGauntlet;
+    const hasLevel = showUnlock && levelUnlocked && !isGauntlet && mode !== 'guest';
     const hasItem = showUnlock && itemUnlocked;
     const hasGauntletPoints = isGauntlet && gauntletPointsDisplay != null;
     if (!hasLevel && !hasItem && !hasGauntletPoints) return null;

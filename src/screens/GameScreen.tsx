@@ -727,6 +727,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Suppress POI auto-open on the tile we just restored onto.
   // Resume should rebuild the screen first; the player can still interact manually.
   const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
+  const localPoiDispatchInFlightRef = useRef(false);
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
   // Start hidden and fade in once the component tree has mounted + rendered,
@@ -2534,6 +2535,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   };
                   setDefeatOverlayVisible(true);
                 }
+                // Keep exploration music playing — no combat screen is shown.
+                // Night phases are odd in the on-chain Phase enum (1, 3, 5).
+                const isNightAfterCombat = result.newState.phase % 2 === 1;
+                playBgm(isNightAfterCombat ? 'exploration_night' : 'exploration_day', { resume: true, crossfade: true });
               } else {
               // Non-auto-resolve: need enemy identity for CombatScreen replay.
               // Find enemy - check both target position and player's current position
@@ -3184,11 +3189,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           };
           setDefeatOverlayVisible(true);
         }
+        // Keep exploration music playing — no combat screen is shown.
+        const isNight = state.time?.phase === 'NIGHT';
+        playBgm(isNight ? 'exploration_night' : 'exploration_day', { resume: true, crossfade: true });
         return;
       }
       navigation.navigate('Combat');
     }
-  }, [state?.phase, navigation, mode, autoResolveCombat, dispatch]);
+  }, [state?.phase, navigation, mode, autoResolveCombat, dispatch, playBgm]);
 
   // Auto-trigger POI interaction when player moves onto a POI.
   // Uses shouldAutoOpen instead of canInteract to skip auto-open for POIs with unmet preconditions
@@ -3330,7 +3338,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const handlePOIOption = useCallback(
     (optionIndex: number) => {
       // Guard against double-tap while a POI interaction is in progress
-      if (poiInteraction.isInteracting) {
+      if (poiInteraction.isInteracting || localPoiDispatchInFlightRef.current) {
         debugLog('[GameScreen] handlePOIOption BLOCKED: interaction already in progress');
         return;
       }
@@ -3614,7 +3622,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
         state?.activePOI?.poi?.definitionId
       );
       playSfx('ui_click');
+      localPoiDispatchInFlightRef.current = true;
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+      requestAnimationFrame(() => {
+        localPoiDispatchInFlightRef.current = false;
+      });
     },
     [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId, state?.player?.equippedTool, playSfx]
   );
