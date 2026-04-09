@@ -1,0 +1,35 @@
+# EAS Build uses npm install on the server, so node_modules is not needed
+node_modules/
+
+# Build artifacts
+build/
+dist/
+web-build/
+
+# Native generated folders
+/ios
+/android
+
+# Development files
+.expo/
+.vscode/
+.idea/
+.dev-wallet/
+.metro-health-check*
+*.tsbuildinfo
+
+# Tests
+__tests__/
+*.test.ts
+*.test.tsx
+jest.config.*
+
+# Specs / docs
+specs/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
