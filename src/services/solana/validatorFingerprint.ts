@@ -13,6 +13,7 @@
 import { Connection } from '@solana/web3.js';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 
 const GENESIS_HASH_KEY = 'validator_genesis_hash';
@@ -52,6 +53,7 @@ export async function checkValidatorFingerprint(connection: Connection): Promise
     return false;
   } catch (error) {
     console.warn('[validatorFingerprint] Failed to check genesis hash:', error);
+    Sentry.captureException(error, { tags: { source: 'validatorFingerprint.checkValidatorFingerprint' } });
     return false;
   }
 }
@@ -107,6 +109,7 @@ async function clearAllSessionCaches(): Promise<void> {
     }
   } catch (error) {
     console.warn('[validatorFingerprint] Failed to clear AsyncStorage:', error);
+    Sentry.captureException(error, { tags: { source: 'validatorFingerprint.clearAllSessionCaches.asyncStorage' } });
   }
 
   // 2. Clear localStorage keys (session signers, profile caches)
@@ -132,6 +135,7 @@ async function clearAllSessionCaches(): Promise<void> {
       }
     } catch (error) {
       console.warn('[validatorFingerprint] Failed to clear localStorage:', error);
+      Sentry.captureException(error, { tags: { source: 'validatorFingerprint.clearAllSessionCaches.localStorage' } });
     }
   }
 

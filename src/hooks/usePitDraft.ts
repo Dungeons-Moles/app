@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import * as Sentry from '@sentry/react-native';
 import {
   Connection,
   Keypair,
@@ -207,6 +208,7 @@ async function backgroundVrfSetup(
     );
     if (!fulfilled) {
       console.error('[usePitDraft] BG VRF: fulfillment timed out on base');
+      Sentry.captureMessage('BG VRF fulfillment timed out on base (localnet)', { tags: { source: 'usePitDraft.backgroundVrfSetup' } });
     } else {
       console.log('[usePitDraft] BG VRF: fulfilled on base (localnet)');
     }
@@ -311,6 +313,7 @@ async function backgroundVrfSetup(
   );
   if (!fulfilled) {
     console.error('[usePitDraft] BG VRF: fulfillment timed out on ER');
+    Sentry.captureMessage('BG VRF fulfillment timed out on ER', { tags: { source: 'usePitDraft.backgroundVrfSetup' } });
     return;
   }
   console.log('[usePitDraft] BG VRF: fulfilled on ER');
@@ -341,6 +344,7 @@ async function backgroundVrfSetup(
     await new Promise((r) => setTimeout(r, 1_000));
   }
   console.error('[usePitDraft] BG VRF: undelegate timed out');
+  Sentry.captureMessage('BG VRF undelegate timed out', { tags: { source: 'usePitDraft.backgroundVrfSetup' } });
 }
 
 export function usePitDraft(initialPhase?: PitDraftPhase) {
@@ -859,7 +863,10 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
           // Fire-and-forget background VRF setup (temp keypair signs all)
           const [vrfStatePda] = derivePitDraftVrfStatePda(wallet.publicKey);
           backgroundVrfSetup(connection, program, tempKeypair, wallet.publicKey, vrfStatePda).catch(
-            (err) => console.error('[usePitDraft] Background VRF setup failed:', err),
+            (err) => {
+              console.error('[usePitDraft] Background VRF setup failed:', err);
+              Sentry.captureException(err, { tags: { source: 'usePitDraft.backgroundVrfSetup' } });
+            },
           );
         } else {
           setError('Transaction succeeded but no queue event found');
@@ -868,6 +875,7 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
       }
     } catch (err) {
       console.error('[usePitDraft] Enter failed:', err);
+      Sentry.captureException(err, { tags: { source: 'usePitDraft.enterPitDraft' } });
       setError(getPitDraftErrorMessage(err));
       setPhase('error');
     } finally {
@@ -970,6 +978,7 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
         }
       } catch (err) {
         console.error('[usePitDraft] Failed to load history:', err);
+        Sentry.captureException(err, { tags: { source: 'usePitDraft.loadHistory' } });
         if (isMountedRef.current) {
           setHistoryError('Failed to load match history. Please try again.');
         }
@@ -996,6 +1005,7 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
       console.log('[usePitDraft] Left queue, refund confirmed:', sig);
     } catch (err) {
       console.error('[usePitDraft] Leave queue failed:', err);
+      Sentry.captureException(err, { tags: { source: 'usePitDraft.leaveQueue' } });
       setError(err instanceof Error ? err.message : 'Failed to leave queue');
     } finally {
       stopPolling();

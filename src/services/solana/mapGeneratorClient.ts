@@ -6,6 +6,7 @@
 
 import { PublicKey } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 
 // ============================================================================
 // Shared Types
@@ -127,6 +128,7 @@ export async function fetchGeneratedMap(
     const connection = provider.connection ?? null;
     if (!connection?.getAccountInfo) {
       console.error('Failed to fetch generated map:', error);
+      Sentry.captureException(error, { tags: { source: 'mapGeneratorClient.fetchGeneratedMap' } });
       return null;
     }
 
@@ -138,6 +140,7 @@ export async function fetchGeneratedMap(
       return decodeGeneratedMapFromAccountInfo(program, info.data);
     } catch (fallbackError) {
       console.error('Failed to fetch generated map:', fallbackError);
+      Sentry.captureException(fallbackError, { tags: { source: 'mapGeneratorClient.fetchGeneratedMap.fallback' } });
       return null;
     }
   }
@@ -176,6 +179,7 @@ export async function fetchSessionDiscovery(
     const connection = provider.connection ?? null;
     if (!connection?.getAccountInfo) {
       console.error('Failed to fetch session discovery:', error);
+      Sentry.captureException(error, { tags: { source: 'mapGeneratorClient.fetchSessionDiscovery' } });
       return null;
     }
 
@@ -187,6 +191,7 @@ export async function fetchSessionDiscovery(
       return decodeSessionDiscoveryFromAccountInfo(program, info.data);
     } catch (fallbackError) {
       console.error('Failed to fetch session discovery:', fallbackError);
+      Sentry.captureException(fallbackError, { tags: { source: 'mapGeneratorClient.fetchSessionDiscovery.fallback' } });
       return null;
     }
   }

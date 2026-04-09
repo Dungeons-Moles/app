@@ -1,5 +1,6 @@
 import { Connection, PublicKey, GetProgramAccountsFilter } from '@solana/web3.js';
 import { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import type { MetaplexCoreAsset, ListingData } from '@/types/solana';
 import { MPL_CORE_PROGRAM_ID } from './constants';
 
@@ -152,6 +153,7 @@ export async function fetchUserSkinsDas(
     }));
   } catch (e) {
     console.warn('[DAS] getAssetsByOwner failed, will fall back to getProgramAccounts:', e);
+    Sentry.captureException(e, { tags: { source: 'metaplexCore.fetchUserSkinsDas' } });
     throw e;
   }
 }

@@ -12,6 +12,7 @@
  */
 
 import * as SecureStorage from '@/services/storage/secureStorage';
+import * as Sentry from '@sentry/react-native';
 
 // ============================================================================
 // Types
@@ -71,6 +72,7 @@ export async function loadCleanupQueue(): Promise<CleanupQueue> {
     return JSON.parse(data) as CleanupQueue;
   } catch (error) {
     console.error('[DeferredCleanup] Failed to load queue:', error);
+    Sentry.captureException(error, { tags: { source: 'deferredCleanup.loadCleanupQueue' } });
     return { items: [], lastProcessed: null };
   }
 }
@@ -83,6 +85,7 @@ async function saveCleanupQueue(queue: CleanupQueue): Promise<void> {
     await SecureStorage.setItemAsync(CLEANUP_QUEUE_KEY, JSON.stringify(queue));
   } catch (error) {
     console.error('[DeferredCleanup] Failed to save queue:', error);
+    Sentry.captureException(error, { tags: { source: 'deferredCleanup.saveCleanupQueue' } });
   }
 }
 

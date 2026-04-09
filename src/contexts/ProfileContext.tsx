@@ -24,6 +24,7 @@ import {
 } from '@/services/solana/constants';
 import type { CombatSpeed } from '@/types';
 import type { TransactionResult } from '@/types/solana';
+import * as Sentry from '@sentry/react-native';
 
 interface ProfileContextType {
   profile: ReturnType<typeof usePlayerProfile>['profile'];
@@ -183,6 +184,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
           await fetchProfileRef.current();
         }
       } catch (loadError) {
+        Sentry.captureException(loadError, { tags: { source: 'ProfileContext.load' } });
         if (isMounted) {
           setError(getUserErrorMessage(loadError));
         }
@@ -277,6 +279,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       return result;
     } catch (err) {
       console.error('[ProfileContext] Failed to purchase runs:', err);
+      Sentry.captureException(err, { tags: { source: 'ProfileContext.purchaseRuns' } });
       return {
         success: false,
         error: err instanceof Error ? err.message : 'Failed to purchase sessions',
@@ -385,6 +388,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
           await offlineSync.queueResult(levelReached, victory);
           return { success: true };
         } catch (error) {
+          Sentry.captureException(error, { tags: { source: 'ProfileContext.recordRunResult' } });
           return { success: false, error: 'Failed to queue result' };
         }
       }

@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { AppState, AppStateStatus } from 'react-native';
 import {
   queueRunResult,
@@ -107,6 +108,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}): UseOfflineS
       return status;
     } catch (error) {
       console.error('Failed to process sync queue:', error);
+      Sentry.captureException(error, { tags: { source: 'useOfflineSync.syncAll' } });
       return null;
     } finally {
       syncInFlightRef.current = false;

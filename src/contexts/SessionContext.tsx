@@ -8,6 +8,7 @@ import React, {
   useMemo,
   ReactNode,
 } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { Alert, View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Image } from 'react-native';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
@@ -1096,6 +1097,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
       }
       console.warn('[SessionContext] waitForSessionSignerOnEr: timed out waiting for signer on ER');
+      Sentry.captureMessage('waitForSessionSignerOnEr: timed out', {
+        level: 'warning',
+        tags: { source: 'SessionContext.waitForSessionSignerOnEr' },
+      });
       return { ready: false };
     },
     [directErConnection, getRoutedErConnectionForAccount]
@@ -1132,6 +1137,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] configureGauntletAutomation: base delegation failed',
           error instanceof Error ? error.message : error
         );
+        Sentry.captureException(error, { tags: { source: 'SessionContext.configureGauntletAutomation' } });
         return;
       }
 
@@ -1161,6 +1167,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] configureGauntletAutomation: crank scheduling failed',
           error instanceof Error ? error.message : error
         );
+        Sentry.captureException(error, { tags: { source: 'SessionContext.configureGauntletAutomation' } });
       }
     },
     [connection, erConnection]
@@ -1289,6 +1296,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[SessionContext] requestBaseLayerVrf: failed`, err);
+        Sentry.captureException(err, { tags: { source: 'SessionContext.requestBaseLayerVrf' } });
         return { success: false, error: `Base layer VRF request failed: ${msg}` };
       }
     },
@@ -1501,11 +1509,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           logCount: txMeta?.logMessages?.length ?? 0,
           logs: txMeta?.logMessages ?? null,
         });
+        Sentry.captureMessage(`${label}:signature_diagnostics`, {
+          level: 'error',
+          tags: { source: 'SessionContext.logErSignatureDiagnostics' },
+          extra: {
+            signature,
+            confirmationStatus: status?.confirmationStatus ?? null,
+            statusErr: status?.err ?? null,
+            txErr: txMeta?.err ?? null,
+          },
+        });
       } catch (diagErr) {
         console.warn(`[SessionContext] ${label}:diagnostics_failed`, {
           signature,
           error: diagErr instanceof Error ? diagErr.message : String(diagErr),
         });
+        Sentry.captureException(diagErr, { tags: { source: 'SessionContext.logErSignatureDiagnostics' } });
       }
     },
     [directErConnection]
@@ -1644,6 +1663,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           `[SessionContext] ${flowLabel}:init_session_discovery:failed`,
           sessionDiscoveryError
         );
+        Sentry.captureException(sessionDiscoveryError, { tags: { source: 'SessionContext.ensureSessionDiscoveryInitialized' } });
       }
     },
     [connection]
@@ -1848,6 +1868,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               moleDenY: discovery?.moleDenY ?? null,
             }
           );
+          Sentry.captureMessage('retryErVrfForSession: refusing unsafe rebuild for partially initialized session', {
+            level: 'error',
+            tags: { source: 'SessionContext.retryErVrfForSession' },
+            extra: { sessionPda: sessionPda.toBase58() },
+          });
           return {
             success: false,
             error:
@@ -1896,6 +1921,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         } catch (regenErr) {
           console.error('[SessionContext] retryErVrfForSession: map+sync failed', regenErr);
+          Sentry.captureException(regenErr, { tags: { source: 'SessionContext.retryErVrfForSession' } });
           return {
             success: false,
             error: getUserErrorMessage(regenErr),
@@ -1914,6 +1940,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             generatedSeed: existingGeneratedSeed.toString(),
           }
         );
+        Sentry.captureMessage('retryErVrfForSession: refusing VRF retry — generated seed already exists', {
+          level: 'error',
+          tags: { source: 'SessionContext.retryErVrfForSession' },
+          extra: { sessionPda: sessionPda.toBase58() },
+        });
         return {
           success: false,
           error:
@@ -1977,6 +2008,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.log('[SessionContext] retryErVrfForSession: map+sync complete (ER)');
       } catch (regenErr) {
         console.error('[SessionContext] retryErVrfForSession:map+sync failed', regenErr);
+        Sentry.captureException(regenErr, { tags: { source: 'SessionContext.retryErVrfForSession' } });
         return {
           success: false,
           error: getUserErrorMessage(regenErr),
@@ -2167,6 +2199,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         causeLogs,
         raw: err,
       });
+      Sentry.captureException(err instanceof Error ? err : new Error(formatUnknownErrorMessage(err)), {
+        tags: { source: `SessionContext.${label}` },
+      });
     },
     [formatUnknownErrorMessage]
   );
@@ -2265,6 +2300,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             console.warn(
               '[SessionContext] Delegated on base but ER is missing session accounts after timeout'
             );
+            Sentry.captureMessage('ensureDelegatedToRollup: ER missing session accounts after timeout', {
+              level: 'warning',
+              tags: { source: 'SessionContext.ensureDelegatedToRollup' },
+            });
           }
           setUseErForGameplay(erReady);
           if (erReady) {
@@ -2437,6 +2476,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.warn('[SessionContext] Failed to recover deterministic session signer:', error);
+        Sentry.captureException(error, { tags: { source: 'SessionContext.recoverDeterministicSessionSigner' } });
       }
 
       return null;
@@ -2635,6 +2675,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             console.warn(
               '[SessionContext] Orphaned child accounts found but no session signer available to close them'
             );
+            Sentry.captureMessage('startGame: orphaned child accounts found but no session signer available', {
+              level: 'warning',
+              tags: { source: 'SessionContext.startGame' },
+            });
             return {
               success: false,
               error:
@@ -2741,6 +2785,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   console.warn(
                     '[SessionContext] Orphaned accounts still delegated after all attempts'
                   );
+                  Sentry.captureMessage('startGame: orphaned accounts still delegated after all attempts', {
+                    level: 'error',
+                    tags: { source: 'SessionContext.startGame' },
+                  });
                   return {
                     success: false,
                     error:
@@ -2768,6 +2816,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 '[SessionContext] closeOrphanedAccounts failed, trying closeEmptyOrphanedAccounts:',
                 closeResult.error
               );
+              Sentry.captureMessage(`startGame: closeOrphanedAccounts failed: ${closeResult.error}`, {
+                level: 'warning',
+                tags: { source: 'SessionContext.startGame' },
+              });
               // Fallback: accounts may have 0-byte data (corrupted by ER reset + force-undelegate)
               const emptyCloseResult = await sessionManager.closeEmptyOrphanedAccounts(
                 targetSessionPda,
@@ -2778,6 +2830,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   '[SessionContext] Failed to close empty orphaned accounts:',
                   emptyCloseResult.error
                 );
+                Sentry.captureMessage(`startGame: Failed to close empty orphaned accounts: ${emptyCloseResult.error}`, {
+                  level: 'error',
+                  tags: { source: 'SessionContext.startGame' },
+                });
                 return {
                   success: false,
                   error: `Failed to close orphaned accounts: ${emptyCloseResult.error}`,
@@ -3048,6 +3104,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.warn(
           '[SessionContext] ER did not pick up all delegated session accounts within timeout'
         );
+        Sentry.captureMessage('startGame: ER did not pick up delegated session accounts within timeout', {
+          level: 'warning',
+          tags: { source: 'SessionContext.startGame' },
+        });
         // Log what the ER returns to help diagnose
         try {
           const targets = getSessionDelegationTargets(sessionPda, { includeVrf: true });
@@ -3180,6 +3240,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             vrfReadySessionsRef.current.add(sessionPda.toBase58());
           } else {
             console.warn('[SessionContext] startGame:campaign_vrf:fulfillment_timeout (ER)');
+            Sentry.captureMessage('startGame: campaign VRF fulfillment timeout on ER', {
+              level: 'error',
+              tags: { source: 'SessionContext.startGame' },
+            });
             return {
               success: false,
               error:
@@ -4211,12 +4275,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             console.warn(
               '[SessionContext] startGauntletGame: GauntletEchoes still not on ER, echo preview unavailable'
             );
+            Sentry.captureMessage('startGauntletGame: GauntletEchoes not available on ER', {
+              level: 'warning',
+              tags: { source: 'SessionContext.startGauntletGame' },
+            });
           }
         } catch (echoErr) {
           console.warn(
             '[SessionContext] startGauntletGame:echo_sync_failed (non-fatal):',
             echoErr instanceof Error ? echoErr.message : echoErr
           );
+          Sentry.captureException(echoErr, { tags: { source: 'SessionContext.startGauntletGame' } });
         }
       } catch (vrfError) {
         logTxDebugError('startGauntletGame:map_gen', vrfError);
@@ -4418,6 +4487,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             '[SessionContext] Undelegate failed with session already on base; trying forceCloseSession fallback:',
             undelegateResult.error
           );
+          Sentry.captureMessage(`endSession: undelegate failed: ${undelegateResult.error}`, {
+            level: 'warning',
+            tags: { source: 'SessionContext.endSession' },
+          });
           const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
@@ -4427,6 +4500,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           console.warn(
             '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
           );
+          Sentry.captureMessage('endSession: forceCloseSession failed, trying closeSessionOnly', {
+            level: 'warning',
+            tags: { source: 'SessionContext.endSession' },
+          });
           const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
@@ -4515,6 +4592,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           console.warn(
             '[SessionContext] Owner restore timed out with session on base; trying forceCloseSession fallback'
           );
+          Sentry.captureMessage('endSession: owner restore timed out, trying forceCloseSession', {
+            level: 'warning',
+            tags: { source: 'SessionContext.endSession' },
+          });
           const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
@@ -4524,6 +4605,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           console.warn(
             '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
           );
+          Sentry.captureMessage('endSession: forceCloseSession failed after owner restore timeout', {
+            level: 'warning',
+            tags: { source: 'SessionContext.endSession' },
+          });
           const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
@@ -4547,6 +4632,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] settleSessionResult after undelegate failed (will continue cleanup):',
           settleAfterUndelegate.error
         );
+        Sentry.captureMessage(`endSession: settleSessionResult failed: ${settleAfterUndelegate.error}`, {
+          level: 'warning',
+          tags: { source: 'SessionContext.endSession' },
+        });
       }
     }
 
@@ -4586,6 +4675,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       } catch (duelSettleErr) {
         console.warn('[SessionContext] Duel settle failed (non-fatal):', duelSettleErr);
+        Sentry.captureException(duelSettleErr, { tags: { source: 'SessionContext.endSession' } });
       }
     }
 
@@ -4612,6 +4702,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.log('[SessionContext] Gauntlet settle confirmed:', settleSig);
       } catch (settleErr) {
         console.warn('[SessionContext] Gauntlet settle failed (non-fatal):', settleErr);
+        Sentry.captureException(settleErr, { tags: { source: 'SessionContext.endSession' } });
         // Continue to end_session even if settle fails — the session can still be closed
       }
     }
@@ -4633,12 +4724,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] Duel endSession failed; refusing force-close fallback:',
           result.error
         );
+        Sentry.captureMessage(`endSession: Duel endSession failed: ${result.error}`, {
+          level: 'warning',
+          tags: { source: 'SessionContext.endSession' },
+        });
         return result;
       }
       console.warn(
         '[SessionContext] endSession failed; trying forceCloseSession fallback:',
         result.error
       );
+      Sentry.captureMessage(`endSession failed: ${result.error}`, {
+        level: 'warning',
+        tags: { source: 'SessionContext.endSession' },
+      });
       const forceResult = await sessionManager.forceCloseSession(cleanupSigner);
       if (forceResult.success) {
         result = forceResult;
@@ -4646,6 +4745,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.warn(
           '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
         );
+        Sentry.captureMessage('endSession: forceCloseSession fallback also failed', {
+          level: 'warning',
+          tags: { source: 'SessionContext.endSession' },
+        });
         const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
         if (closeOnlyResult.success) {
           result = closeOnlyResult;
@@ -4693,6 +4796,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         } catch (err) {
           console.warn('[SessionContext] Background excess withdrawal failed:', err);
+          Sentry.captureException(err, { tags: { source: 'SessionContext.endSession' } });
         }
       })();
       setUseErForGameplay(false);
@@ -4897,10 +5001,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             const result = await sessionManager.commitSession(stateHash);
             if (!result.success) {
               console.warn('Auto-commit failed:', result.error);
+              Sentry.captureMessage(`Auto-commit failed: ${result.error}`, {
+                level: 'warning',
+                tags: { source: 'SessionContext.startAutoCommit' },
+              });
             }
           }
         } catch (error) {
           console.error('Auto-commit error:', error);
+          Sentry.captureException(error, { tags: { source: 'SessionContext.startAutoCommit' } });
         }
       }, COMMIT_INTERVAL_MS);
     },
@@ -4946,6 +5055,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (!resolvedSessionSigner) {
         console.error('[SessionContext] movePlayer failed: Session key signer not available');
+        Sentry.captureMessage('movePlayer failed: Session key signer not available', {
+          level: 'error',
+          tags: { source: 'SessionContext.movePlayer' },
+        });
         return { success: false };
       }
 
@@ -5003,6 +5116,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     if (!resolvedSessionSigner) {
       console.error('[SessionContext] triggerBoss failed: Session key signer not available');
+      Sentry.captureMessage('triggerBoss failed: Session key signer not available', {
+        level: 'error',
+        tags: { source: 'SessionContext.triggerBoss' },
+      });
       return { success: false };
     }
 
@@ -5034,6 +5151,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     if (!resolvedSessionSigner) {
       console.error('[SessionContext] skipToEndOfWeek failed: Session key signer not available');
+      Sentry.captureMessage('skipToEndOfWeek failed: Session key signer not available', {
+        level: 'error',
+        tags: { source: 'SessionContext.skipToEndOfWeek' },
+      });
       return { success: false };
     }
 
@@ -5134,6 +5255,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setActiveSessions(sessions);
     } catch (error) {
       console.warn('[SessionContext] Failed to fetch session list:', error);
+      Sentry.captureException(error, { tags: { source: 'SessionContext.refreshSessionList' } });
       setActiveSessions([]);
     } finally {
       setIsSessionListLoading(false);
@@ -6302,12 +6424,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             console.warn(
               '[SessionContext] overrideAndStartGauntletGame: GauntletEchoes still not on ER'
             );
+            Sentry.captureMessage('overrideAndStartGauntletGame: GauntletEchoes not available on ER', {
+              level: 'warning',
+              tags: { source: 'SessionContext.overrideAndStartGauntletGame' },
+            });
           }
         } catch (echoErr) {
           console.warn(
             '[SessionContext] overrideAndStartGauntletGame:echo_sync_failed (non-fatal):',
             echoErr instanceof Error ? echoErr.message : echoErr
           );
+          Sentry.captureException(echoErr, { tags: { source: 'SessionContext.overrideAndStartGauntletGame' } });
         }
       } catch (vrfError) {
         return {
@@ -6442,6 +6569,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               '[SessionContext] switchToSession: delegation tx failed but session accounts are delegated; continuing in ER mode',
               delegateResult.error
             );
+            Sentry.captureMessage(`switchToSession: delegation tx failed: ${delegateResult.error}`, {
+              level: 'warning',
+              tags: { source: 'SessionContext.switchToSession' },
+            });
           } else {
             return {
               success: false,
@@ -6470,6 +6601,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: true };
       } catch (error) {
         console.error('[SessionContext] Failed to switch session:', error);
+        Sentry.captureException(error, { tags: { source: 'SessionContext.switchToSession' } });
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to switch session',
@@ -6512,6 +6644,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (levelReached: number, isVictory: boolean): Promise<void> => {
       if (!walletId) {
         console.warn('[SessionContext] Cannot queue cleanup: no wallet address');
+        Sentry.captureMessage('queueEndGame: no wallet address available', {
+          level: 'warning',
+          tags: { source: 'SessionContext.queueEndGame' },
+        });
         return;
       }
 
@@ -6884,6 +7020,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.log('[SessionContext] processPendingCleanups:pending_after_scan', pending.length);
       } catch (scanError) {
         console.warn('[SessionContext] Failed to scan for stale finished sessions:', scanError);
+        Sentry.captureException(scanError, { tags: { source: 'SessionContext.processPendingCleanups' } });
       }
 
       if (pending.length === 0) {
@@ -6944,6 +7081,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   '[SessionContext] Deferred cleanup: dropping — session signer permanently lost',
                   { cleanupId: cleanup.id, retryCount }
                 );
+                Sentry.captureMessage('processPendingCleanups: dropping cleanup — session signer permanently lost', {
+                  level: 'warning',
+                  tags: { source: 'SessionContext.processPendingCleanups' },
+                });
                 await removeCleanup(cleanup.id);
                 continue;
               }
@@ -7057,6 +7198,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                       '[SessionContext] Deferred cleanup: owner restore timed out; trying forceCloseSession fallback',
                       { cleanupId: cleanup.id }
                     );
+                    Sentry.captureMessage('processPendingCleanups: owner restore timed out', {
+                      level: 'warning',
+                      tags: { source: 'SessionContext.processPendingCleanups' },
+                    });
                     const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
                     if (forceCloseResult.success) {
                       await updateCleanup(cleanup.id, { needsSessionEnd: false });
@@ -7085,6 +7230,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     owner: sessionAccount.owner.toBase58(),
                   }
                 );
+                Sentry.captureMessage('processPendingCleanups: unexpected session owner', {
+                  level: 'warning',
+                  tags: { source: 'SessionContext.processPendingCleanups' },
+                  extra: { owner: sessionAccount.owner.toBase58() },
+                });
                 await removeCleanup(cleanup.id);
                 continue;
               } else {
@@ -7194,6 +7344,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                         '[SessionContext] Deferred cleanup: child owners still delegated; trying forceCloseSession fallback',
                         { cleanupId: cleanup.id }
                       );
+                      Sentry.captureMessage('processPendingCleanups: child owners still delegated after retry', {
+                        level: 'warning',
+                        tags: { source: 'SessionContext.processPendingCleanups' },
+                      });
                       const forceCloseResult =
                         await sessionManager.forceCloseSession(cleanupSigner);
                       if (forceCloseResult.success) {
@@ -7279,6 +7433,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     '[SessionContext] Deferred cleanup: endSession failed; trying forceCloseSession fallback',
                     { cleanupId: cleanup.id, endError }
                   );
+                  Sentry.captureMessage(`processPendingCleanups: endSession failed: ${endError}`, {
+                    level: 'warning',
+                    tags: { source: 'SessionContext.processPendingCleanups' },
+                  });
                   const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
                   if (forceCloseResult.success) {
                     await updateCleanup(cleanup.id, { needsSessionEnd: false });
@@ -7331,6 +7489,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         } catch (error) {
           console.error('[SessionContext] Error processing cleanup:', cleanup.id, error);
+          Sentry.captureException(error, { tags: { source: 'SessionContext.processPendingCleanups' } });
           const retryCount = await incrementRetryCount(cleanup.id);
           console.warn('[SessionContext] processPendingCleanups:retry_incremented', {
             cleanupId: cleanup.id,
@@ -7402,6 +7561,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: true };
       } catch (error) {
         console.error('[SessionContext] Failed to abandon session:', error);
+        Sentry.captureException(error, { tags: { source: 'SessionContext.abandonSession' } });
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to abandon session',
@@ -7471,6 +7631,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] forceAbandon: undelegation failed, trying fallbacks...',
           undelegateResult.error
         );
+        Sentry.captureMessage(`forceAbandon: undelegation failed: ${undelegateResult.error}`, {
+          level: 'warning',
+          tags: { source: 'SessionContext.forceAbandonCurrentSession' },
+        });
         // Fallback: try forceCloseSession (handles delegated children) or closeSessionOnly
         const forceCloseResult = await sessionManager.forceCloseSession(sessionSignerKeypair);
         if (forceCloseResult.success) {
@@ -7580,6 +7744,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return { success: true, signature };
     } catch (error) {
       console.error('[SessionContext] Failed to force abandon session:', error);
+      Sentry.captureException(error, { tags: { source: 'SessionContext.forceAbandonCurrentSession' } });
       try {
         const sessionPda = sessionManager.activeSessionPda;
         if (sessionPda) {
@@ -7609,6 +7774,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       } catch (reconcileErr) {
         console.warn('[SessionContext] forceAbandon:failed_to_reconcile_route', reconcileErr);
+        Sentry.captureException(reconcileErr, { tags: { source: 'SessionContext.forceAbandonCurrentSession' } });
       }
       return {
         success: false,

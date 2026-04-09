@@ -9,6 +9,7 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import type {
   CombatStartedEvent,
   EnemyMovedEvent,
@@ -209,6 +210,7 @@ export async function parseCombatLog(
       }
     } catch (err) {
       console.warn('[parseCombatLog] Manual decode error:', err);
+      Sentry.captureException(err, { tags: { source: 'eventParser.parseCombatLog' } });
     }
     if (enemyInfo) break;
   }
@@ -272,6 +274,7 @@ function decodeAnchorEvent(program: Program, buffer: Buffer): ParsedEvent | null
     }
   } catch (err) {
     console.warn('[decodeAnchorEvent] Failed to decode event:', err);
+    Sentry.captureException(err, { tags: { source: 'eventParser.decodeAnchorEvent' } });
   }
 
   return null;

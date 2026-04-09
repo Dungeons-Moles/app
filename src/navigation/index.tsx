@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react';
-import { Platform } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { Platform, View, Text, StyleSheet, Pressable } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import { NavigationContainer, type NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Sentry from '@sentry/react-native';
+import { sentryNavigationIntegration } from '../utils/sentry';
 import { LoadingScreen } from '../screens/LoadingScreen';
 import { AccountScreen } from '../screens/AccountScreen';
 import { HubScreen } from '../screens/HubScreen';
@@ -181,6 +183,61 @@ const SCREEN_TITLES: Record<string, string> = {
   Skins: 'Skins',
 };
 
+function ScreenErrorFallback({ resetError }: { resetError: () => void }) {
+  return (
+    <View style={errorStyles.container}>
+      <Text style={errorStyles.title}>Something went wrong</Text>
+      <Text style={errorStyles.message}>An unexpected error occurred.</Text>
+      <Pressable style={errorStyles.button} onPress={resetError}>
+        <Text style={errorStyles.buttonText}>Try Again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const errorStyles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e' },
+  title: { color: '#e0d5c1', fontSize: 22, fontFamily: 'IMFellEnglish-Regular', marginBottom: 8 },
+  message: { color: '#a09080', fontSize: 14, fontFamily: 'Inter-Regular', marginBottom: 24 },
+  button: { backgroundColor: '#3d2b1f', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 6 },
+  buttonText: { color: '#e0d5c1', fontSize: 14, fontFamily: 'Inter-SemiBold' },
+});
+
+/** Wrap a screen component with Sentry error boundary for use with React Navigation */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withSentryBoundary(Component: React.ComponentType<any>, screenName: string) {
+  const Wrapped = Sentry.withErrorBoundary(Component, {
+    fallback: ScreenErrorFallback,
+    beforeCapture: (scope) => {
+      scope.setTag('screen', screenName);
+    },
+  });
+  Wrapped.displayName = `SentryBoundary(${screenName})`;
+  return Wrapped;
+}
+
+// Pre-wrap all screens with Sentry error boundaries (outside render to avoid remounting)
+const SentryLoadingScreen = withSentryBoundary(LoadingScreen, 'Loading');
+const SentryAccountScreen = withSentryBoundary(AccountScreen, 'Account');
+const SentryHubScreen = withSentryBoundary(HubScreen, 'Hub');
+const SentryBattleSimulatorScreen = withSentryBoundary(BattleSimulatorScreen, 'BattleSimulator');
+const SentryCampaignSelectScreen = withSentryBoundary(CampaignSelectScreen, 'CampaignSelect');
+const SentryGameScreen = withSentryBoundary(GameScreen, 'Game');
+const SentryCombatScreen = withSentryBoundary(CombatScreen, 'Combat');
+const SentryDeathScreen = withSentryBoundary(DeathScreen, 'Death');
+const SentryVictoryScreen = withSentryBoundary(VictoryScreen, 'Victory');
+const SentryPitDraftScreen = withSentryBoundary(PitDraftScreen, 'PitDraft');
+const SentryPitDraftHistoryScreen = withSentryBoundary(PitDraftHistoryScreen, 'PitDraftHistory');
+const SentryDuelsScreen = withSentryBoundary(DuelsScreen, 'Duels');
+const SentryDuelsHistoryScreen = withSentryBoundary(DuelsHistoryScreen, 'DuelsHistory');
+const SentryGauntletScreen = withSentryBoundary(GauntletScreen, 'Gauntlet');
+const SentryGauntletHistoryScreen = withSentryBoundary(GauntletHistoryScreen, 'GauntletHistory');
+const SentryGauntletRankingScreen = withSentryBoundary(GauntletRankingScreen, 'GauntletRanking');
+const SentrySessionLoadingScreen = withSentryBoundary(SessionLoadingScreen, 'SessionLoading');
+const SentryMarketplaceScreen = withSentryBoundary(MarketplaceScreen, 'Marketplace');
+const SentryItemsScreen = withSentryBoundary(ItemsScreen, 'Items');
+const SentrySkinsScreen = withSentryBoundary(SkinsScreen, 'Skins');
+
 function getActiveRouteName(state: NavigationState | undefined): string | undefined {
   if (!state) return undefined;
   const route = state.routes[state.index];
@@ -189,6 +246,8 @@ function getActiveRouteName(state: NavigationState | undefined): string | undefi
 }
 
 export function AppNavigator() {
+  const navigationRef = useRef<any>(null);
+
   const onStateChange = useCallback((state: NavigationState | undefined) => {
     if (Platform.OS !== 'web') return;
     const routeName = getActiveRouteName(state);
@@ -197,7 +256,12 @@ export function AppNavigator() {
   }, []);
 
   return (
-    <NavigationContainer onStateChange={onStateChange}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => {
+        sentryNavigationIntegration.registerNavigationContainer(navigationRef);
+      }}
+      onStateChange={onStateChange}>
       <Stack.Navigator
         initialRouteName="Loading"
         screenOptions={{
@@ -206,26 +270,26 @@ export function AppNavigator() {
           animation: 'fade',
         }}
       >
-        <Stack.Screen name="Loading" component={LoadingScreen} />
-        <Stack.Screen name="Account" component={AccountScreen} />
-        <Stack.Screen name="Hub" component={HubScreen} />
-        {__DEV__ && <Stack.Screen name="BattleSimulator" component={BattleSimulatorScreen} />}
-        <Stack.Screen name="CampaignSelect" component={CampaignSelectScreen} />
-        <Stack.Screen name="Game" component={GameScreen} />
-        <Stack.Screen name="Combat" component={CombatScreen} />
-        <Stack.Screen name="Death" component={DeathScreen} />
-        <Stack.Screen name="Victory" component={VictoryScreen} />
-        <Stack.Screen name="PitDraft" component={PitDraftScreen} />
-        <Stack.Screen name="PitDraftHistory" component={PitDraftHistoryScreen} />
-        <Stack.Screen name="Duels" component={DuelsScreen} />
-        <Stack.Screen name="DuelsHistory" component={DuelsHistoryScreen} />
-        <Stack.Screen name="Gauntlet" component={GauntletScreen} />
-        <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
-        <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
-        <Stack.Screen name="SessionLoading" component={SessionLoadingScreen} />
-        <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
-        <Stack.Screen name="Items" component={ItemsScreen} />
-        <Stack.Screen name="Skins" component={SkinsScreen} />
+        <Stack.Screen name="Loading" component={SentryLoadingScreen} />
+        <Stack.Screen name="Account" component={SentryAccountScreen} />
+        <Stack.Screen name="Hub" component={SentryHubScreen} />
+        {__DEV__ && <Stack.Screen name="BattleSimulator" component={SentryBattleSimulatorScreen} />}
+        <Stack.Screen name="CampaignSelect" component={SentryCampaignSelectScreen} />
+        <Stack.Screen name="Game" component={SentryGameScreen} />
+        <Stack.Screen name="Combat" component={SentryCombatScreen} />
+        <Stack.Screen name="Death" component={SentryDeathScreen} />
+        <Stack.Screen name="Victory" component={SentryVictoryScreen} />
+        <Stack.Screen name="PitDraft" component={SentryPitDraftScreen} />
+        <Stack.Screen name="PitDraftHistory" component={SentryPitDraftHistoryScreen} />
+        <Stack.Screen name="Duels" component={SentryDuelsScreen} />
+        <Stack.Screen name="DuelsHistory" component={SentryDuelsHistoryScreen} />
+        <Stack.Screen name="Gauntlet" component={SentryGauntletScreen} />
+        <Stack.Screen name="GauntletHistory" component={SentryGauntletHistoryScreen} />
+        <Stack.Screen name="GauntletRanking" component={SentryGauntletRankingScreen} />
+        <Stack.Screen name="SessionLoading" component={SentrySessionLoadingScreen} />
+        <Stack.Screen name="Marketplace" component={SentryMarketplaceScreen} />
+        <Stack.Screen name="Items" component={SentryItemsScreen} />
+        <Stack.Screen name="Skins" component={SentrySkinsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

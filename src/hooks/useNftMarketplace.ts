@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import BN from 'bn.js';
 import { useWallet } from '@/contexts/WalletContext';
@@ -103,6 +104,7 @@ export function useNftMarketplace() {
       }
     } catch (e) {
       console.error('[useNftMarketplace]', e);
+      Sentry.captureException(e, { tags: { source: 'useNftMarketplace.fetchUserAssets' } });
       if (isMountedRef.current) setError(getUserErrorMessage(e));
     } finally {
       if (isMountedRef.current) setIsLoading(false);
@@ -137,6 +139,7 @@ export function useNftMarketplace() {
       if (isMountedRef.current) setListings(enriched);
     } catch (e) {
       console.error('[useNftMarketplace]', e);
+      Sentry.captureException(e, { tags: { source: 'useNftMarketplace.fetchMarketplaceListings' } });
       if (isMountedRef.current) setError(getUserErrorMessage(e));
     } finally {
       if (isMountedRef.current) setIsLoading(false);
@@ -183,6 +186,7 @@ export function useNftMarketplace() {
         return { success: true, signature };
       } catch (txError) {
         console.error('[useNftMarketplace]', txError);
+        Sentry.captureException(txError, { tags: { source: 'useNftMarketplace.listNft' } });
         const message = getUserErrorMessage(txError, 'nft_marketplace');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -227,6 +231,7 @@ export function useNftMarketplace() {
         return { success: true, signature };
       } catch (txError) {
         console.error('[useNftMarketplace]', txError);
+        Sentry.captureException(txError, { tags: { source: 'useNftMarketplace.cancelListing' } });
         const message = getUserErrorMessage(txError, 'nft_marketplace');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -295,6 +300,7 @@ export function useNftMarketplace() {
         return { success: true, signature };
       } catch (txError) {
         console.error('[useNftMarketplace]', txError);
+        Sentry.captureException(txError, { tags: { source: 'useNftMarketplace.buyNft' } });
         const message = getUserErrorMessage(txError, 'nft_marketplace');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };

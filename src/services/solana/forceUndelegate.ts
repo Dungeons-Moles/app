@@ -17,6 +17,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from '@solana/web3.js';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
@@ -337,6 +338,7 @@ export async function forceUndelegateAccount(
       `[forceUndelegate] Failed for ${label}…:`,
       err instanceof Error ? err.message : err
     );
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), { tags: { source: 'forceUndelegate.forceUndelegateAccount' } });
     return false;
   }
 }

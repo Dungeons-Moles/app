@@ -1,5 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 
 export interface PlayerRelicEntryData {
   itemId: string;
@@ -62,6 +63,7 @@ export async function fetchPlayerRelicPool(
     };
   } catch (error) {
     console.error('Failed to fetch player relic pool:', error);
+    Sentry.captureException(error, { tags: { source: 'playerRelics.fetchPlayerRelicPool' } });
     return null;
   }
 }

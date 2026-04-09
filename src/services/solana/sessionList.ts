@@ -9,6 +9,7 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import {
   SESSION_MANAGER_PROGRAM_ID,
   GAMEPLAY_STATE_PROGRAM_ID,
@@ -263,6 +264,7 @@ export async function fetchSessionList(
         gameStatePda: gameStatePda.toBase58(),
         error,
       });
+      Sentry.captureException(error, { tags: { source: 'sessionList.fetchSessionList' } });
     }
   }
 
@@ -378,6 +380,7 @@ export async function switchToSession(
     };
   } catch (error) {
     console.error('[sessionList] Failed to decode session data:', error);
+    Sentry.captureException(error, { tags: { source: 'sessionList.switchToSession' } });
     return null;
   }
 }

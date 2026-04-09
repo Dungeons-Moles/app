@@ -27,6 +27,7 @@ import { createCombatState } from '../game/combat/state';
 import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { CombatResolverInput } from '../game/combat/types';
 import type { CombatSpeed } from '../types';
+import * as Sentry from '@sentry/react-native';
 
 export type { CombatSpeed } from '../types';
 

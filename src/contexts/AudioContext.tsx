@@ -10,6 +10,7 @@ import React, {
 import { Platform } from 'react-native';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 
 // --- Constants ---
 const VOLUME_STORAGE_KEY = '@app:audio_volumes';
@@ -209,6 +210,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn('[AudioContext] Failed to initialize audio:', err);
+        Sentry.captureException(err, { tags: { source: 'AudioContext.init' }, level: 'warning' });
       } finally {
         if (mounted) setIsInitialLoading(false);
       }
@@ -501,6 +503,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           }
         } catch (err) {
           console.warn(`[AudioContext] Failed to play BGM ${track}:`, err);
+          Sentry.captureException(err, { tags: { source: 'AudioContext.playBGM', track }, level: 'warning' });
         }
       });
 
@@ -575,6 +578,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         await sound.playAsync();
       } catch (err) {
         console.warn(`[AudioContext] Failed to play SFX ${track}:`, err);
+        Sentry.captureException(err, { tags: { source: 'AudioContext.playSFX', track }, level: 'warning' });
       }
     },
     [sfxVolume]

@@ -9,6 +9,7 @@ import React, {
 import { Platform } from 'react-native';
 import { transact, Web3MobileWallet } from '@solana-mobile/mobile-wallet-adapter-protocol-web3js';
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import * as Sentry from '@sentry/react-native';
 import { WalletState, AuthorizationResult } from '../types';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
@@ -303,6 +304,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     loadPreferredWebWallet()
   );
 
+  // Set Sentry user context when wallet connects/disconnects
+  useEffect(() => {
+    if (wallet.address) {
+      Sentry.setUser({ id: wallet.address });
+    } else {
+      Sentry.setUser(null);
+    }
+  }, [wallet.address]);
+
   // Auto-airdrop on local validator when using dev wallet
   useEffect(() => {
     if (!SOLANA_CONFIG.isLocalValidator || !devWebWallet || wallet.authToken !== 'dev-web-wallet')
@@ -375,6 +385,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           return;
         } catch (error) {
           console.warn('[WalletContext] Mobile wallet restore failed:', error);
+          Sentry.captureException(error, { tags: { source: 'WalletContext.restoreMobileWallet' } });
           await clearMobileWalletSession();
           return;
         } finally {
@@ -595,6 +606,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const errorMessage = getUserErrorMessage(err);
         setError(errorMessage);
         console.error('Wallet connection error:', err);
+        Sentry.captureException(err, { tags: { source: 'WalletContext.connect' } });
         return null;
       } finally {
         setIsConnecting(false);
@@ -812,6 +824,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           cause: (e as { cause?: unknown }).cause ?? null,
           raw: err,
         });
+        Sentry.captureException(err, { tags: { source: 'WalletContext.signAndSendTransaction' } });
         throw err;
       }
     },

@@ -1,5 +1,6 @@
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
 import { Tier, ToolOilModification } from './types/player_inventory';
 
@@ -62,6 +63,7 @@ export async function fetchInventory(
     };
   } catch (error) {
     console.error('Failed to fetch inventory:', error);
+    Sentry.captureException(error, { tags: { source: 'playerInventory.fetchInventory' } });
     return null;
   }
 }

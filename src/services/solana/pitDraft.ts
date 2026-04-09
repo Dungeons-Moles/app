@@ -10,6 +10,7 @@
 
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
@@ -94,6 +95,7 @@ export async function fetchPitDraftQueue(
       console.log('[pitDraft] Queue account not initialized yet');
     } else {
       console.warn('[pitDraft] Failed to fetch queue:', err);
+      Sentry.captureException(err, { tags: { source: 'pitDraft.fetchPitDraftQueue' } });
     }
     return null;
   }
@@ -420,6 +422,7 @@ export function parsePitDraftEventsFromLogs(
       }
     } catch (err) {
       console.warn('[pitDraft] Event decode error:', err);
+      Sentry.captureException(err, { tags: { source: 'pitDraft.parsePitDraftEventsFromLogs' } });
     }
 
     if (result.queued || (result.combatVisual && result.resolved)) break;
@@ -653,6 +656,7 @@ function decodePitDraftCombatVisual(data: Buffer): PitDraftCombatVisualEvent | n
     };
   } catch (err) {
     console.error('[pitDraft] Failed to decode PitDraftCombatVisual:', err);
+    Sentry.captureException(err, { tags: { source: 'pitDraft.decodePitDraftCombatVisual' } });
     return null;
   }
 }

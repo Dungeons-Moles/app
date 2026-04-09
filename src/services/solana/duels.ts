@@ -9,6 +9,7 @@
 
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
@@ -141,6 +142,7 @@ export async function fetchDuelQueue(
       return null;
     }
     console.warn('[duels] Failed to fetch duel queue:', err);
+    Sentry.captureException(err, { tags: { source: 'duels.fetchDuelQueue' } });
     return null;
   }
 }
@@ -735,6 +737,7 @@ export function parseDuelEventsFromLogs(
       }
     } catch (err) {
       console.warn('[duels] Failed to decode event line:', err);
+      Sentry.captureException(err, { tags: { source: 'duels.parseDuelEventsFromLogs' } });
     }
 
     if (result.resolved && (result.combatVisual || result.runFinalized || result.queued)) {
@@ -896,6 +899,7 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
     };
   } catch (err) {
     console.error('[duels] Failed to decode DuelCombatVisual:', err);
+    Sentry.captureException(err, { tags: { source: 'duels.decodeDuelCombatVisual' } });
     return null;
   }
 }
@@ -952,6 +956,7 @@ function decodeDuelResolved(data: Buffer): DuelResolvedEvent | null {
     };
   } catch (err) {
     console.error('[duels] Failed to decode DuelResolved:', err);
+    Sentry.captureException(err, { tags: { source: 'duels.decodeDuelResolved' } });
     return null;
   }
 }

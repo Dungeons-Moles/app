@@ -9,6 +9,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Sentry from '@sentry/react-native';
+import './src/utils/sentry'; // Sentry.init + navigation integration (must run before App renders)
 import {
   useFonts,
   IMFellEnglish_400Regular,
@@ -27,13 +28,6 @@ import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 import { preloadCriticalImages } from './src/utils/preloadCriticalImages';
 import { Analytics } from '@vercel/analytics/react';
-
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
-  enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
-  tracesSampleRate: 0.2,
-  environment: __DEV__ ? 'development' : 'production',
-});
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [

@@ -40,6 +40,7 @@ if (Platform.OS !== 'web') {
 }
 
 const ed25519Sign = nativeEd25519Sign ?? ((msg: Uint8Array, key: Uint8Array) => nobleEd25519.sign(msg, key));
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 
 // ============================================================================
@@ -649,6 +650,7 @@ export async function loadSessionSignerWallet(mainWalletAddress: string): Promis
     return keypair;
   } catch (error) {
     console.error('[sessionSignerWallet] Failed to load sessionSigner wallet:', error);
+    Sentry.captureException(error, { tags: { source: 'sessionSigner.loadSessionSignerWallet' } });
     return null;
   }
 }
@@ -749,6 +751,7 @@ export async function getSessionSignerInfo(
     };
   } catch (error) {
     console.error('Failed to get sessionSigner info:', error);
+    Sentry.captureException(error, { tags: { source: 'sessionSigner.getSessionSignerInfo' } });
     return null;
   }
 }
@@ -1067,6 +1070,7 @@ export async function sendSessionSignerTransaction(
           console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
         }).catch((err) => {
           console.error('[sessionSignerWallet] Background send failed:', err);
+          Sentry.captureException(err instanceof Error ? err : new Error(String(err)), { tags: { source: 'sessionSigner.sendSessionSignerTransaction.fireAndForget' } });
           if (erConnection && isRetriableErBlockhashError(err)) {
             invalidateCachedErBlockhash(connection);
             invalidateCachedRouterBlockhash(connection);
@@ -1081,6 +1085,7 @@ export async function sendSessionSignerTransaction(
           console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
         }).catch((err) => {
           console.error('[sessionSignerWallet] Background send failed:', err);
+          Sentry.captureException(err instanceof Error ? err : new Error(String(err)), { tags: { source: 'sessionSigner.sendSessionSignerTransaction.fireAndForget' } });
           if (erConnection && isRetriableErBlockhashError(err)) {
             invalidateCachedErBlockhash(connection);
             invalidateCachedRouterBlockhash(connection);
@@ -1177,6 +1182,7 @@ export async function sendSessionSignerTransaction(
             '[sessionSignerWallet] Failed to fetch failed tx logs from chain:',
             logFetchErr
           );
+          Sentry.captureException(logFetchErr, { tags: { source: 'sessionSigner.sendSessionSignerTransaction.fetchLogs' } });
         }
         throw new Error(
           `[sessionSignerWallet] Transaction ${signature} failed on-chain: ${formatErr(status.err)}${
@@ -1194,6 +1200,7 @@ export async function sendSessionSignerTransaction(
         invalidateCachedRouterBlockhash(connection);
       }
       if (!shouldRetryEr || attempt >= maxAttempts) {
+        Sentry.captureException(err, { tags: { source: 'sessionSigner.sendSessionSignerTransaction' } });
         if (err instanceof SendTransactionError) {
           // Log preflight simulation logs if available (works on base chain
           // where skipPreflight=false). Fallback to getLogs() only if needed.

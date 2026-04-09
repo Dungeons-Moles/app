@@ -7,6 +7,7 @@
  * - Builds composed swap+pay transactions for mainnet
  */
 import { Connection, PublicKey } from '@solana/web3.js';
+import * as Sentry from '@sentry/react-native';
 import { TOKEN_MINTS, IS_DEVNET } from './constants';
 
 const JUP_API_KEY = process.env.EXPO_PUBLIC_JUPITER_API_KEY ?? '';
@@ -89,6 +90,7 @@ export async function fetchTokenPrices(
     return prices;
   } catch (err) {
     console.warn('[jupiter] Failed to fetch prices:', err);
+    Sentry.captureException(err, { tags: { source: 'jupiter.fetchTokenPrices' } });
     return priceCache?.prices ?? {};
   }
 }
@@ -136,6 +138,7 @@ export async function fetchTokenBalance(
     };
   } catch (err) {
     console.warn('[jupiter] Failed to fetch balance for', token.symbol, err);
+    Sentry.captureException(err, { tags: { source: 'jupiter.fetchTokenBalance' } });
     return null;
   }
 }
@@ -240,6 +243,7 @@ export async function getSwapQuote(
     };
   } catch (err) {
     console.warn('[jupiter] Failed to get swap quote:', err);
+    Sentry.captureException(err, { tags: { source: 'jupiter.getSwapQuote' } });
     return null;
   }
 }

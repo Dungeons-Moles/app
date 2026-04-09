@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import * as Sentry from '@sentry/react-native';
 import {
   SystemProgram,
   PublicKey,
@@ -455,6 +456,7 @@ export function useSessionManager() {
         return { success: true, signature };
       } catch (txError) {
         console.error('[useSessionManager] Transaction error:', txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.startSession' } });
         const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -507,6 +509,7 @@ export function useSessionManager() {
 
       return { success: true, signature };
     } catch (txError) {
+      Sentry.captureException(txError, { tags: { source: 'useSessionManager.overrideCampaignSession' } });
       const message = getUserErrorMessage(txError, 'session_manager');
       if (isMountedRef.current) setError(message);
       return { success: false, error: message };
@@ -547,6 +550,7 @@ export function useSessionManager() {
 
       return { success: true, signature };
     } catch (txError) {
+      Sentry.captureException(txError, { tags: { source: 'useSessionManager.overrideDuelSession' } });
       const message = getUserErrorMessage(txError, 'session_manager');
       if (isMountedRef.current) setError(message);
       return { success: false, error: message };
@@ -587,6 +591,7 @@ export function useSessionManager() {
 
       return { success: true, signature };
     } catch (txError) {
+      Sentry.captureException(txError, { tags: { source: 'useSessionManager.overrideGauntletSession' } });
       const message = getUserErrorMessage(txError, 'session_manager');
       if (isMountedRef.current) setError(message);
       return { success: false, error: message };
@@ -1221,6 +1226,7 @@ export function useSessionManager() {
 
         return { success: true, signature };
       } catch (txError) {
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.delegateSession' } });
         const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -1291,6 +1297,7 @@ export function useSessionManager() {
 
         return { success: true, signature };
       } catch (txError) {
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.commitSession' } });
         const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -1334,6 +1341,7 @@ export function useSessionManager() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[useSessionManager] delegateDuelEntry failed:', msg);
+        Sentry.captureException(err, { tags: { source: 'useSessionManager.delegateDuelEntry' } });
         return { success: false, error: msg };
       }
     },
@@ -1933,6 +1941,7 @@ export function useSessionManager() {
 
         return { success: true, signature };
       } catch (txError) {
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.undelegateSession' } });
         const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
@@ -2005,6 +2014,7 @@ export function useSessionManager() {
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
         console.error('[useSessionManager] Failed to settle session result:', message, txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.settleSessionResult' } });
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -2102,6 +2112,7 @@ export function useSessionManager() {
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
         console.error('[useSessionManager] Failed to close session only:', message, txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.closeSessionOnly' } });
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -2213,6 +2224,7 @@ export function useSessionManager() {
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
         console.error('[useSessionManager] Failed to force-close session:', message, txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.forceCloseSession' } });
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -2270,6 +2282,7 @@ export function useSessionManager() {
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
         console.error('[useSessionManager] Failed to close orphaned accounts:', message, txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.closeOrphanedAccounts' } });
         return { success: false, error: message };
       }
     },
@@ -2366,6 +2379,7 @@ export function useSessionManager() {
           message,
           txError
         );
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.closeEmptyOrphanedAccounts' } });
         return { success: false, error: message };
       }
     },
@@ -2488,6 +2502,7 @@ export function useSessionManager() {
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
         console.error('[useSessionManager] Failed to end session:', message, txError);
+        Sentry.captureException(txError, { tags: { source: 'useSessionManager.endSession' } });
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {

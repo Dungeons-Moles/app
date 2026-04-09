@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
@@ -130,6 +131,7 @@ export function useGauntlet() {
       const missing = msg.includes('Account does not exist') || msg.includes('has no data');
       if (!missing) {
         console.error('[useGauntlet] ensureGauntletInitialized:fetch_failed', err);
+        Sentry.captureException(err, { tags: { source: 'useGauntlet.ensureGauntletInitialized' } });
         throw err;
       }
       console.log('[useGauntlet] ensureGauntletInitialized:missing_config_initializing', {
@@ -273,6 +275,7 @@ export function useGauntlet() {
         resumedState.positionY !== expectedState.positionY;
 
       if (mismatchedSession || wrongRunMode || mutatedDuringResume) {
+        Sentry.captureMessage('Gauntlet resume state validation failed', { tags: { source: 'useGauntlet.validateResumedGauntletState' } });
         console.error('[useGauntlet] enterGauntlet:resume_state_validation_failed', {
           sessionPda: sessionPda.toBase58(),
           expected: expectedState
@@ -561,6 +564,7 @@ export function useGauntlet() {
         return true;
       } catch (err) {
         console.error('[useGauntlet] enterGauntlet failed:', err);
+        Sentry.captureException(err, { tags: { source: 'useGauntlet.enterGauntlet' } });
         setError(getGauntletErrorMessage(err));
         setPhase('error');
         return false;

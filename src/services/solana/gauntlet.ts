@@ -1,6 +1,7 @@
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import type { Program } from '@anchor-lang/core';
 import BN from 'bn.js';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
@@ -628,6 +629,7 @@ export function fetchGauntletEchoFromDiscovery(
     };
   } catch (error) {
     console.warn('[gauntlet] Failed to decode SessionDiscovery echo data:', error);
+    Sentry.captureException(error, { tags: { source: 'gauntlet.fetchGauntletEchoFromDiscovery' } });
     return null;
   }
 }
@@ -703,6 +705,7 @@ function decodeGauntletCombatVisual(data: Buffer): GauntletCombatVisualEvent | n
     };
   } catch (error) {
     console.warn('[gauntlet] Failed to decode GauntletCombatVisual event:', error);
+    Sentry.captureException(error, { tags: { source: 'gauntlet.decodeGauntletCombatVisual' } });
     return null;
   }
 }

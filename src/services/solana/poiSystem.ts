@@ -9,6 +9,7 @@
 import { PublicKey, Keypair, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import type { Connection } from '@solana/web3.js';
 import { Program } from '@anchor-lang/core';
+import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
 import { sendSessionSignerTransaction } from './sessionSigner';
 import {
@@ -134,6 +135,7 @@ export async function fetchMapPois(
     return account ?? null;
   } catch (error) {
     console.error('Failed to fetch map POIs:', error);
+    Sentry.captureException(error, { tags: { source: 'poiSystem.fetchMapPois' } });
     return null;
   }
 }

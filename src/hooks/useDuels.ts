@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
@@ -388,6 +389,7 @@ export function useDuels() {
       return true;
     } catch (err) {
       console.error('[useDuels] enterCurrentSessionDuel failed:', err);
+      Sentry.captureException(err, { tags: { source: 'useDuels.enterCurrentSessionDuel' } });
       setError(getDuelsErrorMessage(err));
       setPhase('error');
       return false;
@@ -564,6 +566,7 @@ export function useDuels() {
         }
       } catch (err) {
         console.error('[useDuels] Failed to load history:', err);
+        Sentry.captureException(err, { tags: { source: 'useDuels.loadHistory' } });
         if (isMountedRef.current) {
           setHistoryError('Failed to load match history. Please try again.');
         }

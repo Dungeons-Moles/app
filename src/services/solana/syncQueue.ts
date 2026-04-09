@@ -6,6 +6,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 
 const SYNC_QUEUE_KEY = 'solana_sync_queue';
 
@@ -40,6 +41,7 @@ export async function getSyncQueue(): Promise<SyncQueue> {
     }
   } catch (error) {
     console.error('Failed to read sync queue:', error);
+    Sentry.captureException(error, { tags: { source: 'syncQueue.getSyncQueue' } });
   }
   return { items: [], lastSyncAttempt: null };
 }
@@ -52,6 +54,7 @@ async function saveSyncQueue(queue: SyncQueue): Promise<void> {
     await AsyncStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
   } catch (error) {
     console.error('Failed to save sync queue:', error);
+    Sentry.captureException(error, { tags: { source: 'syncQueue.saveSyncQueue' } });
   }
 }
 
@@ -195,6 +198,7 @@ export async function processSyncQueue(
       }
     } catch (error) {
       console.error(`Failed to sync item ${item.id}:`, error);
+      Sentry.captureException(error, { tags: { source: 'syncQueue.processSyncQueue' } });
       failed++;
     }
   }
