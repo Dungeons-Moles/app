@@ -39,6 +39,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BetaWelcomeModal, BETA_WELCOME_KEY } from '../components/ui/BetaWelcomeModal';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { useSessionSigner } from '../hooks/useSessionSigner';
+import { useNativeGamepadMotion } from '../hooks/useNativeGamepadMotion';
+import { usePsg1Input } from 'psg1-sim';
 import {
   buildGameWalletDerivationMessage,
   deriveSessionSignerFromSignature,
@@ -104,6 +106,45 @@ type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
 };
 
+/**
+ * Drives analog-stick scrolling on the Profile modal's ScrollView. Mounted
+ * only while the modal is open + controller mode, so its motion-store
+ * subscriptions don't churn the Hub render. The interval reads the latest
+ * stick values via refs so re-renders don't tear down the loop.
+ */
+function ProfileScrollController({
+  scrollRef,
+  scrollYRef,
+}: {
+  scrollRef: React.RefObject<ScrollView | null>;
+  scrollYRef: React.MutableRefObject<number>;
+}) {
+  const psg1Input = usePsg1Input();
+  const nativeMotion = useNativeGamepadMotion();
+  const psg1Ref = useRef(psg1Input);
+  psg1Ref.current = psg1Input;
+  const motionRef = useRef(nativeMotion);
+  motionRef.current = nativeMotion;
+
+  useEffect(() => {
+    const DEAD_ZONE = 0.2;
+    const SCROLL_SPEED = 14; // px per tick at full stick deflection
+    const interval = setInterval(() => {
+      const psg1 = psg1Ref.current.leftStick;
+      const native = motionRef.current.leftStick;
+      const usePsg1 = Math.abs(psg1.y) > 0.01 || Math.abs(psg1.x) > 0.01;
+      const y = usePsg1 ? psg1.y : native.y;
+      if (Math.abs(y) < DEAD_ZONE) return;
+      const next = Math.max(0, scrollYRef.current + y * SCROLL_SPEED);
+      scrollYRef.current = next;
+      scrollRef.current?.scrollTo({ y: next, animated: false });
+    }, 16);
+    return () => clearInterval(interval);
+  }, [scrollRef, scrollYRef]);
+
+  return null;
+}
+
 export function HubScreen({ navigation }: HubScreenProps) {
   const { profile, isLoading, clearProfile, updateName, refresh, mode } = useProfile();
   const isGuest = mode === 'guest';
@@ -127,6 +168,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showSkins, setShowSkins] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  // Refs for analog-stick scrolling of the Profile modal's ScrollView.
+  const profileScrollRef = useRef<ScrollView>(null);
+  const profileScrollYRef = useRef(0);
   const [showPvP, setShowPvP] = useState(false);
   const [showGuestDifficulty, setShowGuestDifficulty] = useState(false);
   const [showBetaWelcome, setShowBetaWelcome] = useState(false);
@@ -1803,8 +1847,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
         animationType="fade"
         onRequestClose={() => setShowProfile(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowProfile(false)}>
+        <View style={styles.modalOverlay}>
+            {/* Backdrop sits behind the modal content; the modal is a plain
+                View so touch gestures (notably ScrollView pans) don't fight
+                a Pressable for the responder. Tap outside the modal hits the
+                backdrop → close. */}
             <Pressable
+              style={StyleSheet.absoluteFillObject}
+              onPress={() => setShowProfile(false)}
+            />
+            <View
               style={[
                 styles.marketplaceModal,
                 isCompact && compactStyles.marketplaceModal,
@@ -1845,8 +1897,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </View>
 
                   <ScrollView
+                    ref={profileScrollRef}
                     style={{ flex: 1, width: '100%' }}
                     contentContainerStyle={{ gap: 16, paddingRight: isCompact ? 24 : 12 }}
+                    onScroll={(e) => {
+                      profileScrollYRef.current = e.nativeEvent.contentOffset.y;
+                    }}
+                    scrollEventThrottle={16}
                   >
                     {/* Name Edit */}
                     <View style={styles.profileSection}>
@@ -2183,8 +2240,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   )}
                 </View>
-            </Pressable>
-        </Pressable>
+                {/* Analog-stick scrolling for the Profile modal — only
+                    mounted while the modal is open + controller mode. */}
+                {isController && (
+                  <ProfileScrollController
+                    scrollRef={profileScrollRef}
+                    scrollYRef={profileScrollYRef}
+                  />
+                )}
+            </View>
+        </View>
       </InlineModal>
 
       {/* Profile Controller Keyboard */}
@@ -3414,18 +3479,18 @@ const compactStyles = StyleSheet.create({
   },
   // Shared modals (Skins, Ranks, Quests) — scaled up for compact
   marketplaceModal: {
-    width: 910,
-    height: 760,
+    width: 1100,
+    height: 940,
   },
   marketplaceBg: {
-    top: (760 - 906) / 2,
-    left: (910 - 760) / 2,
-    width: 760,
-    height: 906,
+    top: (940 - 1095) / 2,
+    left: (1100 - 920) / 2,
+    width: 920,
+    height: 1095,
   },
   marketplaceInner: {
-    padding: 60,
-    paddingTop: 40,
+    padding: 72,
+    paddingTop: 48,
   },
   modalTitle: {
     fontSize: 48,

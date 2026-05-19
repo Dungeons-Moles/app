@@ -347,12 +347,12 @@ async function backgroundVrfSetup(
   Sentry.captureMessage('BG VRF undelegate timed out', { tags: { source: 'usePitDraft.backgroundVrfSetup' } });
 }
 
-export function usePitDraft(initialPhase?: PitDraftPhase) {
+export function usePitDraft() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const { mode, profile } = useProfile();
   const { connection } = useSolanaConnection();
 
-  const [phase, setPhase] = useState<PitDraftPhase>(initialPhase ?? 'confirm');
+  const [phase, setPhase] = useState<PitDraftPhase>('confirm');
   const [matchData, setMatchData] = useState<PitDraftMatchData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);

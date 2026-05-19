@@ -314,20 +314,22 @@ const styles = StyleSheet.create({
 
 const compactStyles = StyleSheet.create({
   panel: {
-    width: 600,
-    minHeight: 520,
-    paddingVertical: 56,
-    paddingHorizontal: 72,
+    // Sized to the 1240x1080 ScaledCanvas — the previous 600x520 felt cramped
+    // compared to the other compact modals (Beta ~920 tall, GameWalletInfo ~780).
+    width: 800,
+    minHeight: 680,
+    paddingVertical: 72,
+    paddingHorizontal: 88,
   },
   title: {
-    fontSize: 36,
+    fontSize: 44,
     marginBottom: 28,
   },
   detailLabel: {
-    fontSize: 20,
+    fontSize: 28,
   },
   detailValue: {
-    fontSize: 22,
+    fontSize: 30,
   },
   devnetBanner: {
     paddingVertical: 12,
@@ -336,20 +338,20 @@ const compactStyles = StyleSheet.create({
     marginBottom: 16,
   },
   devnetText: {
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 22,
+    lineHeight: 32,
   },
   attribution: {
-    fontSize: 14,
+    fontSize: 20,
     marginBottom: 20,
   },
   button: {
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingVertical: 20,
+    paddingHorizontal: 48,
     borderRadius: 12,
-    minWidth: 160,
+    minWidth: 200,
   },
   buttonText: {
-    fontSize: 28,
+    fontSize: 36,
   },
 });

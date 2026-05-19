@@ -86,6 +86,11 @@ async function loadSkiaImage(source: any): Promise<SkImage | null> {
   return null;
 }
 
+/** Free a Skia image's native bitmap memory — the JS GC never reclaims it. */
+function disposeImage(img: SkImage | null | undefined) {
+  (img as unknown as { dispose?: () => void } | null | undefined)?.dispose?.();
+}
+
 /**
  * Hook to load entity images for Skia.
  * Pass playerSkinSource to override the default mole with an equipped skin.
@@ -99,6 +104,12 @@ export function useSkiaEntityImages(
   const [baseImages, setBaseImages] = useState<Record<string, SkImage | null>>({});
   const [playerSkiaImage, setPlayerSkiaImage] = useState<SkImage | null>(null);
   const [opponentSkiaImage, setOpponentSkiaImage] = useState<SkImage | null>(null);
+
+  // Mirror every loaded Skia image in a ref so the unmount cleanup can dispose
+  // them — they hold native bitmap memory that JS garbage collection ignores.
+  const baseImagesRef = useRef<Record<string, SkImage | null>>({});
+  const playerImageRef = useRef<SkImage | null>(null);
+  const opponentImageRef = useRef<SkImage | null>(null);
 
   // Stabilize the skin source — only reload when the resolved URI actually changes
   const resolvedPlayerImage = playerSkinSource ?? playerImage;
@@ -133,10 +144,17 @@ export function useSkiaEntityImages(
       });
 
       await Promise.all(promises);
-      if (!cancelled) setBaseImages(loaded);
+      if (cancelled) {
+        Object.values(loaded).forEach(disposeImage);
+        return;
+      }
+      baseImagesRef.current = loaded;
+      setBaseImages(loaded);
     };
     loadStatic();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load player image separately — only reloads when the skin URI changes
@@ -147,7 +165,12 @@ export function useSkiaEntityImages(
     let cancelled = false;
     (async () => {
       const img = await loadSkiaImage(resolvedPlayerImage);
-      if (!cancelled) setPlayerSkiaImage(img);
+      if (cancelled) {
+        disposeImage(img);
+        return;
+      }
+      playerImageRef.current = img;
+      setPlayerSkiaImage(img);
     })();
     return () => { cancelled = true; };
   }, [playerUri]);
@@ -160,10 +183,27 @@ export function useSkiaEntityImages(
     let cancelled = false;
     (async () => {
       const img = await loadSkiaImage(resolvedOpponentImage);
-      if (!cancelled) setOpponentSkiaImage(img);
+      if (cancelled) {
+        disposeImage(img);
+        return;
+      }
+      opponentImageRef.current = img;
+      setOpponentSkiaImage(img);
     })();
     return () => { cancelled = true; };
   }, [opponentUri]);
+
+  // Dispose every Skia image when the hook unmounts (leaving the game screen).
+  // Without this the decoded bitmaps pile up on every mount and the app's
+  // memory climbs until it thrashes and the whole game turns sluggish.
+  useEffect(
+    () => () => {
+      Object.values(baseImagesRef.current).forEach(disposeImage);
+      disposeImage(playerImageRef.current);
+      disposeImage(opponentImageRef.current);
+    },
+    []
+  );
 
   return useMemo(() => ({
     ...baseImages,

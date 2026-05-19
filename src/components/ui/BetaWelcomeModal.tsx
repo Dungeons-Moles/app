@@ -21,6 +21,7 @@ import { CachedImageBackground } from '../common/CachedImageBackground';
 import { InlineModal } from '../InlineModal';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { CANVAS_HEIGHT } from '../ScaledCanvas';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { useAudio } from '../../contexts/AudioContext';
@@ -51,7 +52,12 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
   const isCompact = useScreenVariant() === 'compact';
   const { height: windowHeight } = useWindowDimensions();
   const baseHeight = isCompact ? 920 : 500;
-  const maxHeight = windowHeight * 0.95;
+  // On the compact variant the modal renders inside the fixed 1240x1080
+  // ScaledCanvas; useWindowDimensions() reports the smaller real device size
+  // (~635dp on the PSG1) and would shrink the modal needlessly. Fit to the
+  // virtual canvas height instead.
+  const layoutHeight = isCompact ? CANVAS_HEIGHT : windowHeight;
+  const maxHeight = layoutHeight * 0.95;
   const modalScale = maxHeight < baseHeight ? maxHeight / baseHeight : 1;
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -524,27 +530,27 @@ const compactStyles = StyleSheet.create({
     marginBottom: 6,
   },
   subtitle: {
-    fontSize: 22,
+    fontSize: 34,
   },
   divider: {
     marginVertical: 20,
   },
   bodyText: {
-    fontSize: 24,
-    lineHeight: 34,
+    fontSize: 38,
+    lineHeight: 50,
   },
   solAmount: {
-    fontSize: 26,
+    fontSize: 42,
   },
   perksRow: {
     gap: 44,
     marginTop: 20,
   },
   perkIcon: {
-    fontSize: 32,
+    fontSize: 48,
   },
   perkText: {
-    fontSize: 22,
+    fontSize: 34,
   },
   infoBox: {
     marginTop: 20,
@@ -553,34 +559,34 @@ const compactStyles = StyleSheet.create({
     borderRadius: 10,
   },
   lockIcon: {
-    width: 24,
-    height: 24,
+    width: 36,
+    height: 36,
     marginTop: -3,
   },
   infoTitle: {
-    fontSize: 24,
+    fontSize: 36,
     marginBottom: 6,
   },
   infoBody: {
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 32,
+    lineHeight: 42,
   },
   errorText: {
-    fontSize: 18,
+    fontSize: 28,
     marginTop: 10,
   },
   buttonSlot: {
-    width: 380,
+    width: 440,
     marginTop: 20,
   },
   buttonText: {
-    fontSize: 26,
+    fontSize: 40,
   },
   skipText: {
-    fontSize: 18,
+    fontSize: 28,
   },
   thanks: {
-    fontSize: 20,
+    fontSize: 30,
     marginTop: 28,
   },
   hintBar: {

@@ -131,7 +131,6 @@ export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreen
   // parallel but must not block navigation — a slow/hung image fetch should
   // never produce a false "Session Timed Out" when on-chain setup succeeded.
   useEffect(() => {
-    if (route.params?.debugPreview) return;
     let cancelled = false;
     const promise = getSessionSetupPromise();
     if (!promise) {

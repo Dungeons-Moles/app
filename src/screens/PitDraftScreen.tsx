@@ -27,7 +27,7 @@ import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet } from '../contexts/WalletContext';
-import { useIsFocused, RouteProp } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { usePitDraft } from '../hooks/usePitDraft';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
@@ -69,13 +69,12 @@ const MOLE_BONFIRE = require('../../assets/ui/illustrations/mole-bonfire.webp');
 const PAPER_PINS = require('../../assets/ui/panels/paper-with-pins.webp');
 
 type PitDraftScreenProps = {
-  route: RouteProp<RootStackParamList, 'PitDraft'>;
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
 };
 
-export function PitDraftScreen({ route, navigation }: PitDraftScreenProps) {
+export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
-  const pitDraft = usePitDraft(route.params?.debugPhase);
+  const pitDraft = usePitDraft();
 
   // Lock to landscape orientation
   useLandscapeLock();
@@ -1635,8 +1634,11 @@ const compactStyles = StyleSheet.create({
     marginBottom: 12,
   },
   panelWrapper: {
-    width: '95%',
-    maxWidth: 900,
+    // Native Yoga ignores `maxWidth` when combined with a percentage `width`
+    // and `aspectRatio`, so the panel renders ~1100dp wide instead of 900 and
+    // the overlay's hardcoded margins miss the artwork. Fix to an explicit
+    // width — on the 1240 canvas `95%` always hits the 900 cap anyway.
+    width: 900,
     aspectRatio: 1.2,
   },
   panelOverlay: {
@@ -1670,8 +1672,16 @@ const compactStyles = StyleSheet.create({
   },
   panelButtons: {
     marginHorizontal: 0,
-    marginTop: 150,
     marginBottom: 0,
+    // Vertical: `marginTop: 150` lands the buttons at wrapper y 650-725,
+    // which matches the plank Y range (649-717) computed from the artwork.
+    // Bottom-anchoring with `marginTop: 'auto'` puts them 30px below the planks.
+    marginTop: 150,
+    // Horizontal: the planks drawn in pvp-modes-panel.webp are centered at
+    // ~26.7% / ~74.4% of the panel width, but `flex: 1 / flex: 1` centers the
+    // buttons at 25%/75%. Asymmetric padding shifts both onto their planks.
+    paddingLeft: 25,
+    paddingRight: 14,
   },
   bonfireContainer: {
     width: 500,

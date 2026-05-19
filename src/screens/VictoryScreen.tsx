@@ -55,7 +55,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     runMode,
     gauntletPoints,
   } = route.params ?? {};
-  const { height } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -64,7 +64,12 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const { mode, refresh: refreshProfile } = useProfile();
   const isCompact = useScreenVariant() === 'compact';
 
-  const isVerticalLayout = height > 768;
+  // On the compact variant the app renders inside the 1240x1080 ScaledCanvas;
+  // useWindowDimensions() reports the smaller real device size on the PSG1,
+  // which would incorrectly pick the horizontal layout. Size against the
+  // virtual canvas instead so the vertical layout activates.
+  const effectiveHeight = isCompact ? 1080 : windowHeight;
+  const isVerticalLayout = effectiveHeight > 768;
   const [summarySize, setSummarySize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {

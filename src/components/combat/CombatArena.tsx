@@ -2,6 +2,12 @@
  * T056: CombatArena with Skia
  * Renders the combat scene with player and enemy combatants
  * @see specs/001-pve-dungeon-crawler/spec.md FR-015, FR-048, FR-049
+ *
+ * IMPORTANT: the layout math here (arena dimensions, combatant boxes, sprite
+ * sizes, positions) is kept 1:1 with CombatArena.web.tsx. The two files share
+ * no code, so any layout change must be mirrored in both or the PSG1 and the
+ * web simulator diverge. Only the rendering medium differs — this file draws
+ * the background with Skia, the web file uses an <ImageBackground>.
  */
 
 import React from 'react';
@@ -18,6 +24,8 @@ import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { getEntityImageSource, getEntityCombatScale, getEntityCombatYOffset, getEntityCombatXOffset } from '../game/entityImages';
 import { useHitAnimation, useStatusFlashes, useStatGainFlashes, useActiveGlow } from '../../hooks/useHitAnimation';
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../ScaledCanvas';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.webp');
 const DEFAULT_MOLE = require('../../../assets/entities/characters/default-mole.webp');
@@ -69,13 +77,18 @@ export const CombatArena = React.memo(function CombatArena({
   playerCombatScale = 1,
   scale = 1,
 }: CombatArenaProps) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const arenaWidth = scale > 1
-    ? Math.min(screenWidth * 0.5, 900)
+  // On the compact variant the app renders inside the fixed 1240x1080
+  // ScaledCanvas; useWindowDimensions() reports the smaller real device size
+  // (~729x635 on the PSG1), so size against the virtual canvas instead. The
+  // arena formula below is identical to CombatArena.web.tsx.
+  const window = useWindowDimensions();
+  const isCompact = useScreenVariant() === 'compact';
+  const screenWidth = isCompact ? CANVAS_WIDTH : window.width;
+  const screenHeight = isCompact ? CANVAS_HEIGHT : window.height;
+  const arenaWidth = isCompact
+    ? Math.min(screenWidth * 0.45, 600)
     : Math.min(screenWidth * 0.5, 400);
-  const arenaHeight = scale > 1
-    ? Math.min(screenHeight * 0.85, 800)
-    : Math.min(screenHeight * 0.75, 300);
+  const arenaHeight = isCompact ? Math.min(screenHeight * 0.6, 520) : 300;
   const bgImage = useImage(BATTLEGROUND_BG);
 
   const enemyHit = useHitAnimation(enemy?.hp, enemy != null ? enemy.arm + enemy.bonusArm : undefined);
@@ -100,13 +113,24 @@ export const CombatArena = React.memo(function CombatArena({
   const combatantRadius = 50 * scale;
   const enemyX = arenaWidth * 0.25;
   const playerX = arenaWidth * 0.75;
-  const combatantY = arenaHeight * 0.4;
+  const combatantY = arenaHeight * 0.45;
+  // Status effects position (below the floor line)
+  const statusEffectsY = arenaHeight * 0.75;
 
   const enemyEntityScale = getEntityCombatScale(enemy.definitionId);
-  const enemyRadius = combatantRadius * enemyEntityScale;
   const enemyYOffset = getEntityCombatYOffset(enemy.definitionId) * scale;
-  const playerRadius = combatantRadius * playerCombatScale;
   const enemyXOffset = getEntityCombatXOffset(enemy.definitionId) * scale;
+
+  // Sprite boxes — kept identical to CombatArena.web.tsx. `*Half` is the
+  // hitbox radius, `*Full` the hitbox box, `*Img` the (larger) rendered image.
+  const enemyHalf = 40 * scale * enemyEntityScale;
+  const enemyFull = 80 * scale * enemyEntityScale;
+  const enemyImg = 120 * scale * enemyEntityScale;
+  const playerHalf = 40 * scale * playerCombatScale;
+  const playerFull = 80 * scale * playerCombatScale;
+  const playerImg = 120 * scale * playerCombatScale;
+  // The player stands on a floor line 40*scale below combatantY (web parity).
+  const playerFloorY = combatantY + 40 * scale;
 
   const enemyImageSource =
     enemy.definitionId === 'pvpOpponent'
@@ -114,9 +138,6 @@ export const CombatArena = React.memo(function CombatArena({
       : enemy.definitionId
         ? (getEntityImageSource(enemy.definitionId) ?? DEFAULT_MOLE)
         : DEFAULT_MOLE;
-
-  // Status effects position (below the floor line)
-  const statusEffectsY = arenaHeight * 0.75;
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
@@ -143,10 +164,10 @@ export const CombatArena = React.memo(function CombatArena({
           style={[
             styles.imageContainer,
             {
-              left: enemyX - enemyRadius * layer.size + enemyXOffset,
-              top: combatantY - enemyRadius * layer.size + enemyYOffset,
-              width: enemyRadius * 2 * layer.size,
-              height: enemyRadius * 2 * layer.size,
+              left: enemyX - enemyHalf * layer.size + enemyXOffset,
+              top: combatantY - enemyHalf * layer.size + enemyYOffset,
+              width: enemyFull * layer.size,
+              height: enemyFull * layer.size,
               opacity: Animated.multiply(enemyGlow.opacity, layer.opacity),
               transform: [{ scale: enemyGlow.scale }],
             },
@@ -155,8 +176,8 @@ export const CombatArena = React.memo(function CombatArena({
           <RNImage
             source={enemyImageSource}
             style={{
-              width: enemyRadius * 2 * layer.size,
-              height: enemyRadius * 2 * layer.size,
+              width: enemyImg * layer.size,
+              height: enemyImg * layer.size,
               tintColor: '#D4A84B',
             }}
             resizeMode="contain"
@@ -168,10 +189,10 @@ export const CombatArena = React.memo(function CombatArena({
         style={[
           styles.imageContainer,
           {
-            left: enemyX - enemyRadius + enemyXOffset,
-            top: combatantY - enemyRadius + enemyYOffset,
-            width: enemyRadius * 2,
-            height: enemyRadius * 2,
+            left: enemyX - enemyHalf + enemyXOffset,
+            top: combatantY - enemyHalf + enemyYOffset,
+            width: enemyFull,
+            height: enemyFull,
             opacity: enemyHit.flashOpacity,
             transform: [{ translateX: enemyHit.shakeX }],
           },
@@ -179,24 +200,17 @@ export const CombatArena = React.memo(function CombatArena({
       >
         <RNImage
           source={enemyImageSource}
-          style={{ width: enemyRadius * 2, height: enemyRadius * 2 }}
+          style={{ width: enemyImg, height: enemyImg }}
           resizeMode="contain"
         />
         {[...enemyStatusFlashes, ...enemyStatFlashes, { color: '#a855f7', opacity: enemyHit.armorFlashOpacity }].map((flash, i) => (
-          <Animated.Image
-            key={i}
-            source={enemyImageSource}
-            style={[
-              styles.tintOverlay,
-              {
-                width: enemyRadius * 2,
-                height: enemyRadius * 2,
-                tintColor: flash.color,
-                opacity: flash.opacity,
-              },
-            ]}
-            resizeMode="contain"
-          />
+          <Animated.View key={i} style={[styles.tintOverlay, { opacity: flash.opacity }]}>
+            <RNImage
+              source={enemyImageSource}
+              style={{ width: enemyImg, height: enemyImg, tintColor: flash.color }}
+              resizeMode="contain"
+            />
+          </Animated.View>
         ))}
       </Animated.View>
 
@@ -207,10 +221,10 @@ export const CombatArena = React.memo(function CombatArena({
           style={[
             styles.imageContainer,
             {
-              left: playerX - playerRadius * layer.size,
-              top: combatantY + combatantRadius - playerRadius * 2 * layer.size,
-              width: playerRadius * 2 * layer.size,
-              height: playerRadius * 2 * layer.size,
+              left: playerX - playerHalf * layer.size,
+              top: playerFloorY - playerFull * layer.size,
+              width: playerFull * layer.size,
+              height: playerFull * layer.size,
               opacity: Animated.multiply(playerGlow.opacity, layer.opacity),
               transform: [{ scaleX: -1 }, { scale: playerGlow.scale }],
             },
@@ -219,8 +233,8 @@ export const CombatArena = React.memo(function CombatArena({
           <RNImage
             source={playerSkinSource ?? DEFAULT_MOLE}
             style={{
-              width: playerRadius * 2 * layer.size,
-              height: playerRadius * 2 * layer.size,
+              width: playerImg * layer.size,
+              height: playerImg * layer.size,
               tintColor: '#D4A84B',
             }}
             resizeMode="contain"
@@ -232,10 +246,10 @@ export const CombatArena = React.memo(function CombatArena({
         style={[
           styles.imageContainer,
           {
-            left: playerX - playerRadius,
-            top: combatantY + combatantRadius - playerRadius * 2,
-            width: playerRadius * 2,
-            height: playerRadius * 2,
+            left: playerX - playerHalf,
+            top: playerFloorY - playerFull,
+            width: playerFull,
+            height: playerFull,
             opacity: playerHit.flashOpacity,
             transform: [{ scaleX: -1 }, { translateX: playerHit.shakeX }],
           },
@@ -243,24 +257,17 @@ export const CombatArena = React.memo(function CombatArena({
       >
         <RNImage
           source={playerSkinSource ?? DEFAULT_MOLE}
-          style={{ width: playerRadius * 2, height: playerRadius * 2 }}
+          style={{ width: playerImg, height: playerImg }}
           resizeMode="contain"
         />
         {[...playerStatusFlashes, ...playerStatFlashes, { color: '#a855f7', opacity: playerHit.armorFlashOpacity }].map((flash, i) => (
-          <Animated.Image
-            key={i}
-            source={playerSkinSource ?? DEFAULT_MOLE}
-            style={[
-              styles.tintOverlay,
-              {
-                width: playerRadius * 2,
-                height: playerRadius * 2,
-                tintColor: flash.color,
-                opacity: flash.opacity,
-              },
-            ]}
-            resizeMode="contain"
-          />
+          <Animated.View key={i} style={[styles.tintOverlay, { opacity: flash.opacity }]}>
+            <RNImage
+              source={playerSkinSource ?? DEFAULT_MOLE}
+              style={{ width: playerImg, height: playerImg, tintColor: flash.color }}
+              resizeMode="contain"
+            />
+          </Animated.View>
         ))}
       </Animated.View>
 
@@ -268,14 +275,14 @@ export const CombatArena = React.memo(function CombatArena({
       <View style={styles.overlay}>
         <DamageNumbers
           damageNumbers={damageNumbers}
-          enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 20 }}
-          playerPosition={{ x: playerX, y: combatantY + combatantRadius - playerRadius * 2 - 20 }}
+          enemyPosition={{ x: enemyX, y: combatantY - enemyHalf + enemyYOffset - 20 }}
+          playerPosition={{ x: playerX, y: combatantY + combatantRadius - combatantRadius * 2 * playerCombatScale - 20 }}
           scale={scale}
         />
         <EffectNotifications
           notifications={effectNotifications}
-          enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 40 }}
-          playerPosition={{ x: playerX, y: combatantY + combatantRadius - playerRadius * 2 - 40 }}
+          enemyPosition={{ x: enemyX, y: combatantY - enemyHalf + enemyYOffset - 40 }}
+          playerPosition={{ x: playerX, y: combatantY + combatantRadius - combatantRadius * 2 * playerCombatScale - 40 }}
           scale={scale}
         />
       </View>
@@ -378,6 +385,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusGrid: {
     position: 'absolute',

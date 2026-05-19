@@ -831,8 +831,13 @@ const compactStyles = StyleSheet.create({
   },
   panelButtons: {
     marginHorizontal: 0,
-    marginTop: 150,
     marginBottom: 0,
+    // Calibrated to the planks in pvp-modes-panel.webp (centers at ~26.7% /
+    // ~74.4% × 27%-bottom of the 900×750 panel). See PitDraftScreen for the
+    // full measurement notes — shared across all three PvP screens.
+    marginTop: 150,
+    paddingLeft: 25,
+    paddingRight: 14,
   },
   modalContent: {
     width: 700,

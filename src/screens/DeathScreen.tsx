@@ -25,6 +25,8 @@ import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useAudio } from '../contexts/AudioContext';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { CANVAS_HEIGHT } from '../components/ScaledCanvas';
 import { RunMode } from '../services/solana/types/gameplay_state';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
@@ -43,15 +45,21 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { totalMoves, level, week, phase, enemiesDefeated, killedBy, runMode } =
     route.params ?? {};
   const { availableRuns, mode } = useProfile();
-  const { height } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
+  const isCompact = useScreenVariant() === 'compact';
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const { playBgm, playSfx } = useAudio();
 
   const isOutOfRuns = mode !== 'guest' && availableRuns === 0;
   const [summarySize, setSummarySize] = useState({ width: 0, height: 0 });
-  // Use vertical layout for taller screens (portrait or large tablets)
-  const isVerticalLayout = height > 768;
+  // Use vertical layout for taller screens (portrait or large tablets).
+  // On the compact variant the app renders inside the 1240x1080 ScaledCanvas;
+  // useWindowDimensions() reports the smaller real device size on the PSG1,
+  // which would incorrectly pick the horizontal layout. Size against the
+  // virtual canvas instead so the vertical layout activates.
+  const effectiveHeight = isCompact ? CANVAS_HEIGHT : windowHeight;
+  const isVerticalLayout = effectiveHeight > 768;
 
   useEffect(() => {
     playBgm('defeat', { crossfade: true });

@@ -28,6 +28,7 @@ import { CachedImageBackground } from '../common/CachedImageBackground';
 import { InlineModal } from '../InlineModal';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { CANVAS_HEIGHT } from '../ScaledCanvas';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { useAudio } from '../../contexts/AudioContext';
@@ -51,14 +52,16 @@ export interface GameWalletInfoModalProps {
   requiredDeposit?: number;
 }
 
+type GameWalletBodyProps = GameWalletInfoModalProps & { isCompact: boolean };
+
 const CONTENT: Record<
   GameWalletInfoMode,
-  { title: string; body: (props: GameWalletInfoModalProps) => React.ReactNode; button: string }
+  { title: string; body: (props: GameWalletBodyProps) => React.ReactNode; button: string }
 > = {
   onboarding: {
     title: 'Game Wallet Setup',
-    body: () => (
-      <Text style={styles.bodyText}>
+    body: (props) => (
+      <Text style={[styles.bodyText, props.isCompact && compactStyles.bodyText]}>
         To play, a small <Text style={styles.bold}>refundable deposit</Text> of{' '}
         <Text style={styles.highlight}>0.12 SOL</Text> is transferred to your game wallet. This
         covers the cost of creating temporary game accounts on the blockchain.{'\n\n'}
@@ -73,7 +76,7 @@ const CONTENT: Record<
   insufficient: {
     title: 'Deposit Required',
     body: (props) => (
-      <Text style={styles.bodyText}>
+      <Text style={[styles.bodyText, props.isCompact && compactStyles.bodyText]}>
         Your game wallet needs more SOL to start a session.{'\n\n'}
         <Text style={styles.bold}>Current balance:</Text>{' '}
         <Text style={styles.highlight}>{(props.currentBalance ?? 0).toFixed(4)} SOL</Text>
@@ -90,8 +93,8 @@ const CONTENT: Record<
   },
   extraDeposit: {
     title: 'Additional Deposit',
-    body: () => (
-      <Text style={styles.bodyText}>
+    body: (props) => (
+      <Text style={[styles.bodyText, props.isCompact && compactStyles.bodyText]}>
         You have an active session in another game mode. Starting a new session requires an{' '}
         <Text style={styles.bold}>additional deposit</Text> for the extra game accounts.{'\n\n'}
         This extra deposit is also <Text style={styles.bold}>refundable</Text> — it will return to
@@ -113,7 +116,12 @@ export function GameWalletInfoModal({
   const isCompact = useScreenVariant() === 'compact';
   const { height: windowHeight } = useWindowDimensions();
   const baseHeight = isCompact ? 780 : 420;
-  const maxHeight = windowHeight * 0.95;
+  // On compact the modal renders inside the fixed 1240x1080 ScaledCanvas;
+  // useWindowDimensions() reports the smaller real device size (~635dp on
+  // the PSG1) and would shrink the modal needlessly. Fit to the virtual
+  // canvas height instead.
+  const layoutHeight = isCompact ? CANVAS_HEIGHT : windowHeight;
+  const maxHeight = layoutHeight * 0.95;
   const modalScale = maxHeight < baseHeight ? maxHeight / baseHeight : 1;
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -138,7 +146,7 @@ export function GameWalletInfoModal({
   if (!visible) return null;
 
   const content = CONTENT[mode];
-  const props = { visible, mode, onClose, currentBalance, requiredDeposit };
+  const props = { visible, mode, onClose, currentBalance, requiredDeposit, isCompact };
 
   return (
     <InlineModal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
@@ -340,15 +348,15 @@ const compactStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   bodyText: {
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 28,
+    lineHeight: 38,
   },
   buttonSlot: {
-    width: 280,
+    width: 360,
     marginTop: 28,
   },
   buttonText: {
-    fontSize: 24,
+    fontSize: 32,
   },
   hintBar: {
     bottom: 32,
@@ -360,6 +368,6 @@ const compactStyles = StyleSheet.create({
     height: 36,
   },
   hintText: {
-    fontSize: 22,
+    fontSize: 24,
   },
 });
