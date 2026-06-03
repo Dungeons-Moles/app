@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { CachedImageBackground } from '../common/CachedImageBackground';
+import { ScaledCanvas } from '../ScaledCanvas';
 import { Typography } from '../../theme/typography';
 import { getEntityImageSource } from './entityImages';
 import { Dimensions } from 'react-native';
@@ -105,6 +106,7 @@ export function BossTooltipModal({
 
   return (
     <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <ScaledCanvas>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <View style={[
           styles.modalContentWrapper,
@@ -211,6 +213,7 @@ export function BossTooltipModal({
         visible={tooltipVisible}
         onClose={() => setTooltipVisible(false)}
       />
+      </ScaledCanvas>
     </Modal>
   );
 }

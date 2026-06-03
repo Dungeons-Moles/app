@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { CachedImageBackground } from '../common/CachedImageBackground';
 import { InlineModal } from '../InlineModal';
+import { CANVAS_HEIGHT } from '../ScaledCanvas';
 import { Typography } from '../../theme/typography';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -47,7 +48,7 @@ export function HubSettingsModal({
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const isCompact = useScreenVariant() === 'compact';
-  const { height } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
   const { autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat } = useSettings();
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
@@ -55,9 +56,13 @@ export function HubSettingsModal({
   const hasResetProfileAction = typeof onResetProfile === 'function';
   const maxSettingsFocus = hasResetProfileAction ? 6 : 5;
   const baseModalHeight = isCompact ? 960 : 420;
-  const maxModalHeight = Math.max(320, height * 0.95);
+  // On compact (PSG1) the modal renders inside the fixed 1240x1080 ScaledCanvas,
+  // so fit it to the virtual canvas height — useWindowDimensions() reports the
+  // smaller real device dp size and would shrink the modal needlessly.
+  const layoutHeight = isCompact ? CANVAS_HEIGHT : windowHeight;
+  const maxModalHeight = Math.max(320, layoutHeight * 0.95);
   const modalScale = Math.min(1, maxModalHeight / baseModalHeight);
-  const isTightFit = !isCompact && height < 420;
+  const isTightFit = !isCompact && windowHeight < 420;
 
   useEffect(() => {
     if (visible) setSettingsFocus(0);

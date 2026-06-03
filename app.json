@@ -37,7 +37,8 @@
           "project": "app"
         }
       ],
-      "expo-image"
+      "expo-image",
+      "./plugins/withPsg1Gamepad"
     ],
     "extra": {
       "solanaCluster": "devnet",

@@ -405,6 +405,7 @@ export function InventoryPanel({
         styles.container,
         isSidebar && styles.sidebarContainer,
         useGauntletSidebarSizing && styles.gauntletSidebarContainer,
+        isCompactSidebar && styles.compactSidebarContainer,
       ]}
     >
       {/* Gear Section - Top */}
@@ -561,6 +562,14 @@ const styles = StyleSheet.create({
   },
   sidebarContainer: {
     backgroundColor: 'transparent',
+  },
+  // Compact floating sidebar: the panel sizes to its content, so the inventory
+  // must size to its content too. `container`'s `flex: 1` collapses it to zero
+  // height here (Yoga can't grow a flex child into an auto-height parent, and
+  // `flex > 0` forces flexBasis to 0). `flex: 0` overrides that — it resolves
+  // flexBasis to `auto`, so the view sizes to its gear/weapon content.
+  compactSidebarContainer: {
+    flex: 0,
   },
   gauntletSidebarContainer: {
     gap: 4,

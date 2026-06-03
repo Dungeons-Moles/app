@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
 import { Typography } from '../../theme/typography';
+import { ScaledCanvas } from '../ScaledCanvas';
 import { formatPhaseLabel } from '../../utils/phase-labels';
 import { useAudio } from '../../contexts/AudioContext';
 
@@ -73,6 +74,7 @@ export function SessionSwitcher({
         animationType="fade"
         onRequestClose={() => setIsOpen(false)}
       >
+        <ScaledCanvas>
         <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Switch Session</Text>
@@ -115,6 +117,7 @@ export function SessionSwitcher({
             </Pressable>
           </View>
         </Pressable>
+        </ScaledCanvas>
       </Modal>
     </View>
   );

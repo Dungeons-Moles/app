@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Dimensions, Modal } from 'react-nati
 import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
+import { ScaledCanvas } from '../ScaledCanvas';
 
 interface ItemTooltipProps {
   name: string;
@@ -72,16 +73,18 @@ export function ItemTooltip({
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={handleDismiss}>
-      <View style={styles.modalRoot}>
-        <Pressable style={styles.backdrop} onPress={handleDismiss} />
-        <View style={[styles.tooltip, { left, top, maxWidth, borderColor: rarityColor }]}>
-          <Text style={styles.name}>{name}</Text>
-          <Text style={[styles.rarity, { color: rarityColor }]}>{formatRarityLabel(rarity)}</Text>
-          {normalizedDescription ? (
-            <Text style={styles.description}>{normalizedDescription}</Text>
-          ) : null}
+      <ScaledCanvas>
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.backdrop} onPress={handleDismiss} />
+          <View style={[styles.tooltip, { left, top, maxWidth, borderColor: rarityColor }]}>
+            <Text style={styles.name}>{name}</Text>
+            <Text style={[styles.rarity, { color: rarityColor }]}>{formatRarityLabel(rarity)}</Text>
+            {normalizedDescription ? (
+              <Text style={styles.description}>{normalizedDescription}</Text>
+            ) : null}
+          </View>
         </View>
-      </View>
+      </ScaledCanvas>
     </Modal>
   );
 }

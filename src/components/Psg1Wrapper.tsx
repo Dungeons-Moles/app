@@ -7,6 +7,7 @@ import {
   type AndroidGamepadNativeEvent,
 } from 'psg1-sim';
 import { ScreenVariantProvider } from '../contexts/ScreenVariantContext';
+import { ScaledCanvas } from './ScaledCanvas';
 import { setInputModeController, setInputModeTouch } from '../hooks/useInputMode';
 import { setNativeGamepadMotion } from '../hooks/useNativeGamepadMotion';
 
@@ -181,6 +182,16 @@ export function Psg1Wrapper({ children }: { children: ReactNode }) {
   const { width, height } = useWindowDimensions();
   const variant = width / height < 1.4 ? 'compact' : 'wide';
 
+  // Console (compact) devices like the PSG1 are controller-first — start in
+  // controller mode so button hints and focus highlights show immediately,
+  // without needing an initial button press. A screen touch still switches
+  // back to touch mode via the responder capture below.
+  useEffect(() => {
+    if (variant === 'compact') {
+      setInputModeController();
+    }
+  }, [variant]);
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     // Touch the native module so it is initialized in lazy module setups.
@@ -222,7 +233,9 @@ export function Psg1Wrapper({ children }: { children: ReactNode }) {
           return false;
         }}
       >
-        <ScreenVariantProvider variant={variant}>{children}</ScreenVariantProvider>
+        <ScreenVariantProvider variant={variant}>
+          <ScaledCanvas>{children}</ScaledCanvas>
+        </ScreenVariantProvider>
       </View>
     </Psg1InputProvider>
   );

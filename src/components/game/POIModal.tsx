@@ -693,7 +693,12 @@ export const POIModal = React.memo(function POIModal({
   const isCompact = variant === 'compact';
   const isMobileWide = !isCompact;
   const isNative = Platform.OS !== 'web';
-  const nativeModalHeight = isNative ? Dimensions.get('window').height * 0.98 : undefined;
+  // Only force a fixed modal height on real phones (wide variant). On the
+  // compact variant the app renders inside the fixed 1240x1080 ScaledCanvas,
+  // where Dimensions.get('window') reports the smaller real device size and
+  // would size the modal wrong — there the modal is content-sized, like web.
+  const nativeModalHeight =
+    isNative && isMobileWide ? Dimensions.get('window').height * 0.98 : undefined;
 
   if (isRuneKiln) {
     if (!visible) {
@@ -1031,11 +1036,14 @@ export const POIModal = React.memo(function POIModal({
           <Image
             source={paperPanelSource}
             style={isNative ? {
+              // Edge-anchored fill (not width/height: '100%'): a percentage
+              // size needs a definite parent height, which the content-sized
+              // modal doesn't have — top/left/right/bottom anchors don't.
               position: 'absolute',
-              width: '100%',
-              height: '100%',
               top: 0,
               left: 0,
+              right: 0,
+              bottom: 0,
               zIndex: -1,
             } : {
               position: 'absolute',
@@ -1477,17 +1485,39 @@ export const POIModal = React.memo(function POIModal({
     const restOption = displayOptions[0];
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
-        <View style={styles.standardModal} pointerEvents="auto">
+        {/* Compact-only width cap: the Rest Alcove modal only holds a one-line
+            description + a single button, so the default 420-wide standardModal
+            leaves a lot of dead space inside the paper panel on the PSG1 (the
+            web version fills its narrower viewport so it's not visible there). */}
+        <View
+          style={[styles.standardModal, isCompact && styles.compactModal]}
+          pointerEvents="auto"
+        >
+          {/* On native, the percentage-based image overlay doesn't resolve
+              correctly against the content-sized modal (Yoga vs CSS flexbox —
+              see psg1-layout-divergences #3) and the paper panel ends up the
+              wrong shape. Use edge-anchored absolute on native instead. */}
           <Image
             source={paperPanelSource}
-            style={{
-              position: 'absolute',
-              width: '115%',
-              height: '115%',
-              top: '-7.5%',
-              left: '-7.5%',
-              zIndex: -1,
-            }}
+            style={
+              isNative
+                ? {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: -1,
+                  }
+                : {
+                    position: 'absolute',
+                    width: '115%',
+                    height: '115%',
+                    top: '-7.5%',
+                    left: '-7.5%',
+                    zIndex: -1,
+                  }
+            }
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
@@ -1805,6 +1835,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
+    // Native (Yoga) does not propagate the cards' `minHeight` up through their
+    // `flex: 1` wrappers the way web's CSS flexbox does, so the row would
+    // collapse to the cards' bare content height and the cards would overflow.
+    // Pin a floor here so the row reaches full card height on the device.
+    minHeight: 240,
   },
 
   // ============================================================================
