@@ -1,11 +1,8 @@
-import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import {
-  createAnchorProvider,
-  createPlayerProfileProgramWithProvider,
-} from '@/services/solana/programs';
+import { buildEquipSkinTx, buildUnequipSkinTx } from '@/services/solana/quasarPilots';
 import { derivePlayerProfilePda } from '@/services/solana/constants';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -24,24 +21,9 @@ export function useEquipSkin() {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const walletAdapter = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any) => txs,
-    } as any;
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
-
-  const writeProgram = useMemo(() => {
-    if (!provider) return null;
-    return createPlayerProfileProgramWithProvider(provider);
-  }, [provider]);
-
   const equipSkin = useCallback(
     async (skinAsset: PublicKey): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -52,15 +34,11 @@ export function useEquipSkin() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-
-        const transaction = await writeProgram.methods
-          .equipSkin()
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-            skinAsset,
-          })
-          .transaction();
+        const transaction = buildEquipSkinTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+          skinAsset,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -74,12 +52,12 @@ export function useEquipSkin() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, signAndSendTransaction, wallet.publicKey]
   );
 
   const unequipSkin = useCallback(
     async (): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -90,14 +68,10 @@ export function useEquipSkin() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-
-        const transaction = await writeProgram.methods
-          .unequipSkin()
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-          })
-          .transaction();
+        const transaction = buildUnequipSkinTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -111,7 +85,7 @@ export function useEquipSkin() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, signAndSendTransaction, wallet.publicKey]
   );
 
   return {

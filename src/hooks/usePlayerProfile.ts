@@ -1,13 +1,16 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { SystemProgram, PublicKey } from '@solana/web3.js';
-import { AnchorProvider } from '@anchor-lang/core';
+import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
-  createAnchorProvider,
-  createPlayerProfileProgram,
-  createPlayerProfileProgramWithProvider,
-} from '@/services/solana/programs';
+  buildCloseProfileTx,
+  buildInitializeProfileTx,
+  buildPurchaseRunsTx,
+  buildRecordRunResultTx,
+  buildUpdateActiveItemPoolTx,
+  buildUpdateProfileNameTx,
+  fetchPlayerProfileAccount,
+} from '@/services/solana/quasarPilots';
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { getCachedProfile, setCachedProfile, clearCachedProfile } from '@/services/solana/cache';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -21,7 +24,6 @@ const NAME_MAX_LENGTH = 32;
 export function usePlayerProfile() {
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const readOnlyProgram = useMemo(() => createPlayerProfileProgram(connection), [connection]);
   const [profile, setProfile] = useState<OnChainPlayerProfile | null>(null);
   const [exists, setExists] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -36,27 +38,6 @@ export function usePlayerProfile() {
       isMountedRef.current = false;
     };
   }, []);
-
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) {
-      return null;
-    }
-
-    const walletAdapter: AnchorProvider['wallet'] = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (transaction) => transaction,
-      signAllTransactions: async (transactions) => transactions,
-    } as AnchorProvider['wallet'];
-
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
-
-  const writeProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createPlayerProfileProgramWithProvider(provider);
-  }, [provider]);
 
   const updateState = useCallback(
     (nextProfile: OnChainPlayerProfile | null, nextExists: boolean, cached = false) => {
@@ -82,19 +63,13 @@ export function usePlayerProfile() {
 
     try {
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-      const account = await (
-        readOnlyProgram.account as {
-          playerProfile: {
-            fetchNullable: (address: PublicKey) => Promise<any>;
-          };
-        }
-      ).playerProfile.fetchNullable(profilePda);
+      const account = await fetchPlayerProfileAccount(connection, profilePda);
       if (!account) {
         updateState(null, false);
         return;
       }
 
-      const highestLevel = account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+      const highestLevel = account.highestLevelUnlocked ?? 1;
       console.log('[usePlayerProfile] account.name raw:', JSON.stringify(account.name), typeof account.name);
       // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
       const profileData: OnChainPlayerProfile = {
@@ -163,11 +138,11 @@ export function usePlayerProfile() {
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [readOnlyProgram, updateState, wallet.address, wallet.publicKey]);
+  }, [connection, updateState, wallet.address, wallet.publicKey]);
 
   const createProfile = useCallback(
     async (name: string): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      if (!wallet.publicKey || !wallet.address) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -186,14 +161,11 @@ export function usePlayerProfile() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-        const transaction = await writeProgram.methods
-          .initializeProfile(name)
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-            systemProgram: SystemProgram.programId,
-          })
-          .transaction();
+        const transaction = buildInitializeProfileTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+          name,
+        });
 
         let signature: string;
         try {
@@ -212,14 +184,9 @@ export function usePlayerProfile() {
           );
         }
 
-        const account = await (
-          readOnlyProgram.account as {
-            playerProfile: {
-              fetch: (address: PublicKey) => Promise<any>;
-            };
-          }
-        ).playerProfile.fetch(profilePda);
-        const createHighestLevel = account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+        const account = await fetchPlayerProfileAccount(connection, profilePda);
+        if (!account) throw new Error('Profile account was not found after confirmation');
+        const createHighestLevel = account.highestLevelUnlocked ?? 1;
         // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
         const profileData: OnChainPlayerProfile = {
           owner: account.owner,
@@ -270,12 +237,10 @@ export function usePlayerProfile() {
     },
     [
       connection,
-      readOnlyProgram,
       signAndSendTransaction,
       updateState,
       wallet.address,
       wallet.publicKey,
-      writeProgram,
     ]
   );
 
@@ -286,7 +251,7 @@ export function usePlayerProfile() {
   }, [wallet.address]);
 
   const resetProfile = useCallback(async (): Promise<TransactionResult> => {
-    if (!wallet.publicKey || !wallet.address || !writeProgram) {
+    if (!wallet.publicKey || !wallet.address) {
       return { success: false, error: 'Wallet not connected' };
     }
 
@@ -297,13 +262,10 @@ export function usePlayerProfile() {
 
     try {
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-      const transaction = await writeProgram.methods
-        .closeProfile()
-        .accounts({
-          playerProfile: profilePda,
-          owner: wallet.publicKey,
-        })
-        .transaction();
+      const transaction = buildCloseProfileTx({
+        owner: wallet.publicKey,
+        playerProfile: profilePda,
+      });
 
       const signature = await signAndSendTransaction(transaction);
       await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -325,7 +287,6 @@ export function usePlayerProfile() {
     updateState,
     wallet.address,
     wallet.publicKey,
-    writeProgram,
   ]);
 
   /**
@@ -338,7 +299,7 @@ export function usePlayerProfile() {
    */
   const recordRunResult = useCallback(
     async (levelReached: number, victory: boolean): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      if (!wallet.publicKey || !wallet.address) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -353,13 +314,12 @@ export function usePlayerProfile() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-        const transaction = await writeProgram.methods
-          .recordRunResult(levelReached, victory)
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-          })
-          .transaction();
+        const transaction = buildRecordRunResultTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+          levelReached,
+          victory,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -382,7 +342,6 @@ export function usePlayerProfile() {
       signAndSendTransaction,
       wallet.address,
       wallet.publicKey,
-      writeProgram,
     ]
   );
 
@@ -394,7 +353,7 @@ export function usePlayerProfile() {
    */
   const updateName = useCallback(
     async (name: string): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      if (!wallet.publicKey || !wallet.address) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -413,13 +372,11 @@ export function usePlayerProfile() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-        const transaction = await writeProgram.methods
-          .updateProfileName(name)
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-          })
-          .transaction();
+        const transaction = buildUpdateProfileNameTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+          name,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -442,7 +399,6 @@ export function usePlayerProfile() {
       signAndSendTransaction,
       wallet.address,
       wallet.publicKey,
-      writeProgram,
     ]
   );
 
@@ -453,9 +409,9 @@ export function usePlayerProfile() {
    */
   const updateActiveItemPool = useCallback(
     async (activeItemPool: Uint8Array): Promise<TransactionResult> => {
-      console.log('[usePlayerProfile] updateActiveItemPool called, wallet:', !!wallet.publicKey, 'program:', !!writeProgram);
-      if (!wallet.publicKey || !wallet.address || !writeProgram) {
-        console.warn('[usePlayerProfile] Wallet not connected or program not ready');
+      console.log('[usePlayerProfile] updateActiveItemPool called, wallet:', !!wallet.publicKey);
+      if (!wallet.publicKey || !wallet.address) {
+        console.warn('[usePlayerProfile] Wallet not connected');
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -476,14 +432,12 @@ export function usePlayerProfile() {
           GAMEPLAY_STATE_PROGRAM_ID
         );
         console.log('[usePlayerProfile] Building updateActiveItemPool tx, profile:', profilePda.toBase58());
-        const transaction = await writeProgram.methods
-          .updateActiveItemPool(Array.from(activeItemPool))
-          .accounts({
-            playerProfile: profilePda,
-            owner: wallet.publicKey,
-            pitDraftQueue: pitDraftQueuePda,
-          })
-          .transaction();
+        const transaction = buildUpdateActiveItemPoolTx({
+          owner: wallet.publicKey,
+          playerProfile: profilePda,
+          pitDraftQueue: pitDraftQueuePda,
+          activeItemPool,
+        });
 
         console.log('[usePlayerProfile] Signing and sending transaction...');
         const signature = await signAndSendTransaction(transaction);
@@ -509,7 +463,6 @@ export function usePlayerProfile() {
       signAndSendTransaction,
       wallet.address,
       wallet.publicKey,
-      writeProgram,
     ]
   );
 
@@ -517,7 +470,7 @@ export function usePlayerProfile() {
    * Purchases 20 additional runs by paying 0.001 SOL to the treasury.
    */
   const purchaseRuns = useCallback(async (): Promise<TransactionResult> => {
-    if (!wallet.publicKey || !wallet.address || !writeProgram) {
+    if (!wallet.publicKey || !wallet.address) {
       return { success: false, error: 'Wallet not connected' };
     }
 
@@ -528,16 +481,12 @@ export function usePlayerProfile() {
 
     try {
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
-      const transaction = await writeProgram.methods
-        .purchaseRuns()
-        .accounts({
-          playerProfile: profilePda,
-          owner: wallet.publicKey,
-          treasury: TREASURY_PUBKEY,
-          gauntletPool: GAUNTLET_POOL_PUBKEY,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
+      const transaction = buildPurchaseRunsTx({
+        owner: wallet.publicKey,
+        playerProfile: profilePda,
+        treasury: TREASURY_PUBKEY,
+        gauntletPool: GAUNTLET_POOL_PUBKEY,
+      });
 
       const signature = await signAndSendTransaction(transaction);
       await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -559,7 +508,6 @@ export function usePlayerProfile() {
     signAndSendTransaction,
     wallet.address,
     wallet.publicKey,
-    writeProgram,
   ]);
 
   return {

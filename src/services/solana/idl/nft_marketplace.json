@@ -3,581 +3,11 @@
   "metadata": {
     "name": "nft_marketplace",
     "version": "0.1.0",
-    "spec": "0.1.0",
-    "description": "NFT Marketplace and Quest System for Dungeons & Moles"
+    "spec": "0.1.0"
   },
   "instructions": [
     {
-      "name": "accept_quest",
-      "docs": [
-        "Player accepts a quest, creating their progress account."
-      ],
-      "discriminator": [
-        227,
-        152,
-        182,
-        25,
-        142,
-        11,
-        231,
-        72
-      ],
-      "accounts": [
-        {
-          "name": "quest_definition",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  100,
-                  101,
-                  102
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "quest_progress",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  112,
-                  114,
-                  111,
-                  103,
-                  114,
-                  101,
-                  115,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "player",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "_quest_id",
-          "type": "u16"
-        }
-      ]
-    },
-    {
-      "name": "buy_nft",
-      "docs": [
-        "Buy a listed NFT. Transfers SOL (with fee split) and NFT."
-      ],
-      "discriminator": [
-        96,
-        0,
-        28,
-        190,
-        49,
-        107,
-        83,
-        222
-      ],
-      "accounts": [
-        {
-          "name": "listing",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "writable": true,
-          "relations": [
-            "listing"
-          ]
-        },
-        {
-          "name": "relic_asset_record",
-          "writable": true,
-          "optional": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  95,
-                  97,
-                  115,
-                  115,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "buyer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "seller",
-          "writable": true,
-          "relations": [
-            "listing"
-          ]
-        },
-        {
-          "name": "seller_player_relic_pool",
-          "writable": true,
-          "optional": true
-        },
-        {
-          "name": "buyer_player_relic_pool",
-          "writable": true
-        },
-        {
-          "name": "company_treasury",
-          "writable": true
-        },
-        {
-          "name": "gauntlet_pool",
-          "writable": true
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "player_profile_program",
-          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "cancel_listing",
-      "docs": [
-        "Cancel a listing. Removes Transfer Delegate and closes listing account."
-      ],
-      "discriminator": [
-        41,
-        183,
-        50,
-        232,
-        230,
-        233,
-        157,
-        70
-      ],
-      "accounts": [
-        {
-          "name": "listing",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "writable": true,
-          "relations": [
-            "listing"
-          ]
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "seller",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "listing"
-          ]
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "claim_quest_reward",
-      "docs": [
-        "Player claims a completed quest reward.",
-        "For hackathon: minting happens via separate mint_skin/mint_nft_item calls.",
-        "This instruction just marks the quest as claimed."
-      ],
-      "discriminator": [
-        73,
-        123,
-        191,
-        206,
-        63,
-        127,
-        247,
-        12
-      ],
-      "accounts": [
-        {
-          "name": "quest_definition",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  100,
-                  101,
-                  102
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "quest_progress",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  112,
-                  114,
-                  111,
-                  103,
-                  114,
-                  101,
-                  115,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "player",
-          "signer": true,
-          "relations": [
-            "quest_progress"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "_quest_id",
-          "type": "u16"
-        }
-      ]
-    },
-    {
-      "name": "create_quest",
-      "docs": [
-        "Admin creates a quest definition."
-      ],
-      "discriminator": [
-        112,
-        49,
-        32,
-        224,
-        255,
-        173,
-        5,
-        7
-      ],
-      "accounts": [
-        {
-          "name": "quest_definition",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  100,
-                  101,
-                  102
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "quest_id",
-          "type": "u16"
-        },
-        {
-          "name": "quest_type",
-          "type": {
-            "defined": {
-              "name": "QuestType"
-            }
-          }
-        },
-        {
-          "name": "objective_type",
-          "type": {
-            "defined": {
-              "name": "ObjectiveType"
-            }
-          }
-        },
-        {
-          "name": "objective_count",
-          "type": "u16"
-        },
-        {
-          "name": "reward_type",
-          "type": {
-            "defined": {
-              "name": "RewardType"
-            }
-          }
-        },
-        {
-          "name": "reward_data",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "season",
-          "type": "u8"
-        }
-      ]
-    },
-    {
-      "name": "initialize_marketplace",
-      "docs": [
-        "One-time marketplace configuration setup."
-      ],
+      "name": "initializeMarketplace",
       "discriminator": [
         47,
         81,
@@ -590,408 +20,38 @@
       ],
       "accounts": [
         {
-          "name": "marketplace_config",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "authority",
           "writable": true,
           "signer": true
         },
         {
-          "name": "gauntlet_pool"
+          "name": "marketplaceConfig",
+          "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "gauntletPool"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
         }
       ],
       "args": [
         {
-          "name": "skins_collection",
-          "type": "pubkey"
+          "name": "skinsCollection",
+          "type": "publicKey"
         },
         {
-          "name": "items_collection",
-          "type": "pubkey"
+          "name": "itemsCollection",
+          "type": "publicKey"
         }
       ]
     },
     {
-      "name": "list_nft",
-      "docs": [
-        "List an NFT for sale. Adds Transfer Delegate plugin so marketplace PDA can transfer."
-      ],
-      "discriminator": [
-        88,
-        221,
-        93,
-        166,
-        63,
-        220,
-        106,
-        232
-      ],
-      "accounts": [
-        {
-          "name": "listing",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  115,
-                  116,
-                  105,
-                  110,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "writable": true
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "seller",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "player_profile",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "seller"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                229,
-                92,
-                184,
-                160,
-                192,
-                222,
-                86,
-                172,
-                46,
-                194,
-                213,
-                211,
-                201,
-                45,
-                33,
-                178,
-                70,
-                109,
-                161,
-                78,
-                239,
-                15,
-                116,
-                209,
-                36,
-                26,
-                153,
-                62,
-                229,
-                135,
-                103,
-                162
-              ]
-            }
-          }
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "price_lamports",
-          "type": "u64"
-        }
-      ]
-    },
-    {
-      "name": "mint_nft_item",
-      "docs": [
-        "Mint an NFT item via CPI to Metaplex Core."
-      ],
-      "discriminator": [
-        225,
-        105,
-        7,
-        236,
-        107,
-        78,
-        104,
-        144
-      ],
-      "accounts": [
-        {
-          "name": "asset",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "relic_asset",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  95,
-                  97,
-                  115,
-                  115,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "player_relic_pool",
-          "writable": true
-        },
-        {
-          "name": "owner"
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "player_profile_program",
-          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
-        },
-        {
-          "name": "log_wrapper",
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "uri",
-          "type": "string"
-        },
-        {
-          "name": "nft_item_id",
-          "type": {
-            "array": [
-              "u8",
-              8
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "mint_skin",
-      "docs": [
-        "Mint a skin NFT via CPI to Metaplex Core.",
-        "Only callable by the mint_authority PDA (used by admin scripts or quest rewards)."
-      ],
+      "name": "mintSkin",
       "discriminator": [
         142,
         213,
@@ -1013,69 +73,13 @@
           "writable": true
         },
         {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
+          "name": "marketplaceConfig"
         },
         {
-          "name": "mint_authority",
-          "docs": [
-            "Mint authority PDA -- update authority on both collections."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
+          "name": "mintAuthority"
         },
         {
           "name": "payer",
-          "docs": [
-            "Admin who triggers the mint."
-          ],
           "writable": true,
           "signer": true
         },
@@ -1083,46 +87,417 @@
           "name": "owner"
         },
         {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+          "name": "mplCoreProgram"
         },
         {
-          "name": "log_wrapper",
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+          "name": "logWrapper"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "systemProgram"
         }
       ],
       "args": [
         {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "uri",
-          "type": "string"
-        },
-        {
-          "name": "_skin_id",
+          "name": "SkinId",
           "type": "u16"
         },
         {
-          "name": "_season",
+          "name": "Season",
           "type": "u8"
         },
         {
-          "name": "_rarity",
+          "name": "Rarity",
+          "type": "u8"
+        },
+        {
+          "name": "name",
+          "type": {
+            "string": {
+              "maxLength": 64
+            }
+          }
+        },
+        {
+          "name": "uri",
+          "type": {
+            "string": {
+              "maxLength": 200
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mintNftItem",
+      "discriminator": [
+        225,
+        105,
+        7,
+        236,
+        107,
+        78,
+        104,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "asset",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "marketplaceConfig"
+        },
+        {
+          "name": "mintAuthority"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "relicAsset",
+          "writable": true
+        },
+        {
+          "name": "playerRelicPool",
+          "writable": true
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "mplCoreProgram"
+        },
+        {
+          "name": "playerProfileProgram"
+        },
+        {
+          "name": "logWrapper"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "nftItemId",
+          "type": {
+            "defined": "[u8]"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "string": {
+              "maxLength": 64
+            }
+          }
+        },
+        {
+          "name": "uri",
+          "type": {
+            "string": {
+              "maxLength": 200
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "listNft",
+      "discriminator": [
+        88,
+        221,
+        93,
+        166,
+        63,
+        220,
+        106,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "listing",
+          "writable": true
+        },
+        {
+          "name": "marketplaceConfig"
+        },
+        {
+          "name": "mintAuthority"
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "playerProfile"
+        },
+        {
+          "name": "mplCoreProgram"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "priceLamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "cancelListing",
+      "discriminator": [
+        41,
+        183,
+        50,
+        232,
+        230,
+        233,
+        157,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "listing",
+          "writable": true
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mplCoreProgram"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "buyNft",
+      "discriminator": [
+        96,
+        0,
+        28,
+        190,
+        49,
+        107,
+        83,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "listing",
+          "writable": true
+        },
+        {
+          "name": "marketplaceConfig"
+        },
+        {
+          "name": "mintAuthority"
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "relicAssetRecord"
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "seller",
+          "writable": true
+        },
+        {
+          "name": "sellerPlayerRelicPool",
+          "writable": true
+        },
+        {
+          "name": "buyerPlayerRelicPool",
+          "writable": true
+        },
+        {
+          "name": "companyTreasury",
+          "writable": true
+        },
+        {
+          "name": "gauntletPool",
+          "writable": true
+        },
+        {
+          "name": "mplCoreProgram"
+        },
+        {
+          "name": "playerProfileProgram"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "createQuest",
+      "discriminator": [
+        112,
+        49,
+        32,
+        224,
+        255,
+        173,
+        5,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "questDefinition",
+          "writable": true
+        },
+        {
+          "name": "marketplaceConfig"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "questId",
+          "type": "u16"
+        },
+        {
+          "name": "questType",
+          "type": {
+            "defined": "QuestType"
+          }
+        },
+        {
+          "name": "objectiveType",
+          "type": {
+            "defined": "ObjectiveType"
+          }
+        },
+        {
+          "name": "objectiveCount",
+          "type": "u16"
+        },
+        {
+          "name": "rewardType",
+          "type": {
+            "defined": "RewardType"
+          }
+        },
+        {
+          "name": "rewardData",
+          "type": {
+            "defined": "[u8]"
+          }
+        },
+        {
+          "name": "season",
           "type": "u8"
         }
       ]
     },
     {
-      "name": "update_quest_progress",
-      "docs": [
-        "Update quest progress. Only callable by the marketplace authority."
+      "name": "acceptQuest",
+      "discriminator": [
+        227,
+        152,
+        182,
+        25,
+        142,
+        11,
+        231,
+        72
       ],
+      "accounts": [
+        {
+          "name": "questDefinition"
+        },
+        {
+          "name": "questProgress",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "questId",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "updateQuestProgress",
       "discriminator": [
         167,
         204,
@@ -1135,115 +510,26 @@
       ],
       "accounts": [
         {
-          "name": "quest_definition",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  100,
-                  101,
-                  102
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
+          "name": "questDefinition"
         },
         {
-          "name": "quest_progress",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  112,
-                  114,
-                  111,
-                  103,
-                  114,
-                  101,
-                  115,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              },
-              {
-                "kind": "arg",
-                "path": "quest_id"
-              }
-            ]
-          }
+          "name": "questProgress",
+          "writable": true
         },
         {
-          "name": "marketplace_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  112,
-                  108,
-                  97,
-                  99,
-                  101,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
+          "name": "marketplaceConfig"
         },
         {
           "name": "authority",
-          "docs": [
-            "Authority that must match marketplace_config.authority."
-          ],
           "signer": true
         },
         {
-          "name": "player",
-          "docs": [
-            "only the authority can advance quest progress."
-          ],
-          "relations": [
-            "quest_progress"
-          ]
+          "name": "player"
         }
       ],
       "args": [
         {
-          "name": "_quest_id",
+          "name": "questId",
           "type": "u16"
         },
         {
@@ -1251,22 +537,41 @@
           "type": "u16"
         }
       ]
+    },
+    {
+      "name": "claimQuestReward",
+      "discriminator": [
+        73,
+        123,
+        191,
+        206,
+        63,
+        127,
+        247,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "questDefinition"
+        },
+        {
+          "name": "questProgress",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "questId",
+          "type": "u16"
+        }
+      ]
     }
   ],
   "accounts": [
-    {
-      "name": "Listing",
-      "discriminator": [
-        218,
-        32,
-        50,
-        73,
-        43,
-        134,
-        26,
-        58
-      ]
-    },
     {
       "name": "MarketplaceConfig",
       "discriminator": [
@@ -1276,34 +581,19 @@
         131,
         182,
         200,
-        81,
-        124
+        81
       ]
     },
     {
-      "name": "QuestDefinition",
+      "name": "Listing",
       "discriminator": [
-        106,
-        90,
-        250,
-        119,
-        170,
-        124,
-        111,
-        19
-      ]
-    },
-    {
-      "name": "QuestProgress",
-      "discriminator": [
-        77,
-        66,
-        99,
-        169,
-        234,
-        177,
-        58,
-        162
+        218,
+        32,
+        50,
+        73,
+        43,
+        134,
+        26
       ]
     },
     {
@@ -1315,349 +605,177 @@
         133,
         226,
         88,
-        154,
-        91
+        154
+      ]
+    },
+    {
+      "name": "QuestDefinition",
+      "discriminator": [
+        106,
+        90,
+        250,
+        119,
+        170,
+        124,
+        111
+      ]
+    },
+    {
+      "name": "QuestProgress",
+      "discriminator": [
+        77,
+        66,
+        99,
+        169,
+        234,
+        177,
+        58
       ]
     }
   ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "Unauthorized",
-      "msg": "Unauthorized"
-    },
-    {
-      "code": 6001,
-      "name": "InvalidCollection",
-      "msg": "Invalid collection"
-    },
-    {
-      "code": 6002,
-      "name": "InvalidPrice",
-      "msg": "Invalid price"
-    },
-    {
-      "code": 6003,
-      "name": "NotOwner",
-      "msg": "NFT not owned by seller"
-    },
-    {
-      "code": 6004,
-      "name": "ListingAlreadyExists",
-      "msg": "Listing already exists"
-    },
-    {
-      "code": 6005,
-      "name": "ListingNotFound",
-      "msg": "Listing not found"
-    },
-    {
-      "code": 6006,
-      "name": "CannotBuySelf",
-      "msg": "Cannot buy your own listing"
-    },
-    {
-      "code": 6007,
-      "name": "ArithmeticOverflow",
-      "msg": "Arithmetic overflow"
-    },
-    {
-      "code": 6008,
-      "name": "InvalidAsset",
-      "msg": "Invalid Metaplex Core asset"
-    },
-    {
-      "code": 6009,
-      "name": "InvalidMintAuthority",
-      "msg": "Invalid mint authority"
-    },
-    {
-      "code": 6010,
-      "name": "QuestNotActive",
-      "msg": "Quest not active"
-    },
-    {
-      "code": 6011,
-      "name": "QuestAlreadyCompleted",
-      "msg": "Quest already completed"
-    },
-    {
-      "code": 6012,
-      "name": "QuestNotCompleted",
-      "msg": "Quest not completed"
-    },
-    {
-      "code": 6013,
-      "name": "QuestRewardAlreadyClaimed",
-      "msg": "Quest reward already claimed"
-    },
-    {
-      "code": 6014,
-      "name": "InvalidQuestType",
-      "msg": "Invalid quest type"
-    },
-    {
-      "code": 6015,
-      "name": "FeeTooHigh",
-      "msg": "Fee basis points exceed maximum"
-    },
-    {
-      "code": 6016,
-      "name": "SkinCurrentlyEquipped",
-      "msg": "Cannot list a skin that is currently equipped"
-    },
-    {
-      "code": 6017,
-      "name": "InvalidGauntletPool",
-      "msg": "Invalid gauntlet pool account"
-    },
-    {
-      "code": 6018,
-      "name": "PriceTooLow",
-      "msg": "Listing price too low"
-    },
-    {
-      "code": 6019,
-      "name": "InvalidAccountData",
-      "msg": "Invalid account data"
-    }
-  ],
+  "events": [],
   "types": [
     {
-      "name": "Listing",
-      "docs": [
-        "NFT listing for sale",
-        "PDA: [b\"listing\", asset.key()]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "seller",
-            "docs": [
-              "Seller wallet"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "asset",
-            "docs": [
-              "Metaplex Core asset address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "collection",
-            "docs": [
-              "Collection the asset belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "price_lamports",
-            "docs": [
-              "Sale price in lamports"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "created_at",
-            "docs": [
-              "When the listing was created"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "MarketplaceConfig",
-      "docs": [
-        "Marketplace configuration (singleton)",
-        "PDA: [b\"marketplace_config\"]"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "authority",
-            "docs": [
-              "Admin authority"
-            ],
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
-            "name": "skins_collection",
-            "docs": [
-              "Skins collection address (Metaplex Core)"
-            ],
-            "type": "pubkey"
+            "name": "skinsCollection",
+            "type": "publicKey"
           },
           {
-            "name": "items_collection",
-            "docs": [
-              "Items collection address (Metaplex Core)"
-            ],
-            "type": "pubkey"
+            "name": "itemsCollection",
+            "type": "publicKey"
           },
           {
-            "name": "company_treasury",
-            "docs": [
-              "Company treasury for fee collection"
-            ],
-            "type": "pubkey"
+            "name": "companyTreasury",
+            "type": "publicKey"
           },
           {
-            "name": "gauntlet_pool",
-            "docs": [
-              "Gauntlet pool vault for fee collection"
-            ],
-            "type": "pubkey"
+            "name": "gauntletPool",
+            "type": "publicKey"
           },
           {
-            "name": "company_fee_bps",
-            "docs": [
-              "Company fee in basis points (e.g., 300 = 3%)"
-            ],
+            "name": "companyFeeBps",
             "type": "u16"
           },
           {
-            "name": "gauntlet_fee_bps",
-            "docs": [
-              "Gauntlet pool fee in basis points (e.g., 200 = 2%)"
-            ],
+            "name": "gauntletFeeBps",
             "type": "u16"
           },
           {
             "name": "bump",
-            "docs": [
-              "PDA bump"
-            ],
             "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "ObjectiveType",
-      "docs": [
-        "Objective type for quests"
-      ],
+      "name": "Listing",
       "type": {
-        "kind": "enum",
-        "variants": [
+        "kind": "struct",
+        "fields": [
           {
-            "name": "WinBattles"
+            "name": "seller",
+            "type": "publicKey"
           },
           {
-            "name": "CompleteLevels"
+            "name": "asset",
+            "type": "publicKey"
           },
           {
-            "name": "PlayPvpMatches"
+            "name": "collection",
+            "type": "publicKey"
           },
           {
-            "name": "DefeatBosses"
+            "name": "priceLamports",
+            "type": "u64"
           },
           {
-            "name": "CollectGold"
+            "name": "createdAt",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RelicAsset",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "publicKey"
+          },
+          {
+            "name": "itemId",
+            "type": {
+              "defined": "[u8]"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
     },
     {
       "name": "QuestDefinition",
-      "docs": [
-        "Quest template",
-        "PDA: [b\"quest_def\", &quest_id.to_le_bytes()]"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "quest_id",
-            "docs": [
-              "Unique quest identifier"
-            ],
+            "name": "questId",
             "type": "u16"
           },
           {
-            "name": "quest_type",
-            "docs": [
-              "Daily, Weekly, or Seasonal"
-            ],
+            "name": "questType",
             "type": {
-              "defined": {
-                "name": "QuestType"
-              }
+              "defined": "QuestType"
             }
           },
           {
-            "name": "objective_type",
-            "docs": [
-              "What the player must do"
-            ],
+            "name": "objectiveType",
             "type": {
-              "defined": {
-                "name": "ObjectiveType"
-              }
+              "defined": "ObjectiveType"
             }
           },
           {
-            "name": "objective_count",
-            "docs": [
-              "How many times the objective must be completed"
-            ],
+            "name": "objectiveCount",
             "type": "u16"
           },
           {
-            "name": "reward_type",
-            "docs": [
-              "What reward is given"
-            ],
+            "name": "rewardType",
             "type": {
-              "defined": {
-                "name": "RewardType"
-              }
+              "defined": "RewardType"
             }
           },
           {
-            "name": "reward_data",
-            "docs": [
-              "Encoded reward parameters (skin_id, item_id, booster count, etc.)"
-            ],
+            "name": "rewardData",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "defined": "[u8]"
             }
           },
           {
             "name": "season",
-            "docs": [
-              "Season number (0 = permanent, 1+ = seasonal)"
-            ],
             "type": "u8"
           },
           {
             "name": "active",
-            "docs": [
-              "Whether quest is currently active"
-            ],
             "type": "bool"
           },
           {
             "name": "bump",
-            "docs": [
-              "PDA bump"
-            ],
             "type": "u8"
           }
         ]
@@ -1665,133 +783,121 @@
     },
     {
       "name": "QuestProgress",
-      "docs": [
-        "Player quest progress",
-        "PDA: [b\"quest_progress\", player.key(), &quest_id.to_le_bytes()]"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "player",
-            "docs": [
-              "Player wallet"
-            ],
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
-            "name": "quest_id",
-            "docs": [
-              "Quest ID reference"
-            ],
+            "name": "questId",
             "type": "u16"
           },
           {
             "name": "progress",
-            "docs": [
-              "Current progress towards objective"
-            ],
             "type": "u16"
           },
           {
             "name": "completed",
-            "docs": [
-              "Whether objective is completed"
-            ],
             "type": "bool"
           },
           {
             "name": "claimed",
-            "docs": [
-              "Whether reward has been claimed"
-            ],
             "type": "bool"
           },
           {
-            "name": "last_reset",
-            "docs": [
-              "Last reset timestamp (for daily/weekly quests)"
-            ],
+            "name": "lastReset",
             "type": "i64"
           },
           {
             "name": "bump",
-            "docs": [
-              "PDA bump"
-            ],
             "type": "u8"
           }
         ]
       }
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "Unauthorized"
     },
     {
-      "name": "QuestType",
-      "docs": [
-        "Quest type (daily, weekly, seasonal)"
-      ],
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Daily"
-          },
-          {
-            "name": "Weekly"
-          },
-          {
-            "name": "Seasonal"
-          }
-        ]
-      }
+      "code": 1,
+      "name": "InvalidCollection"
     },
     {
-      "name": "RelicAsset",
-      "docs": [
-        "Asset-backed relic metadata for gameplay registration.",
-        "PDA: [b\"relic_asset\", asset.key()]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "asset",
-            "type": "pubkey"
-          },
-          {
-            "name": "item_id",
-            "type": {
-              "array": [
-                "u8",
-                8
-              ]
-            }
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
+      "code": 2,
+      "name": "InvalidPrice"
     },
     {
-      "name": "RewardType",
-      "docs": [
-        "Reward type for quest completion"
-      ],
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "GauntletBooster"
-          },
-          {
-            "name": "Skin"
-          },
-          {
-            "name": "NftItem"
-          }
-        ]
-      }
+      "code": 3,
+      "name": "NotOwner"
+    },
+    {
+      "code": 4,
+      "name": "ListingAlreadyExists"
+    },
+    {
+      "code": 5,
+      "name": "ListingNotFound"
+    },
+    {
+      "code": 6,
+      "name": "CannotBuySelf"
+    },
+    {
+      "code": 7,
+      "name": "ArithmeticOverflow"
+    },
+    {
+      "code": 8,
+      "name": "InvalidAsset"
+    },
+    {
+      "code": 9,
+      "name": "InvalidMintAuthority"
+    },
+    {
+      "code": 10,
+      "name": "QuestNotActive"
+    },
+    {
+      "code": 11,
+      "name": "QuestAlreadyCompleted"
+    },
+    {
+      "code": 12,
+      "name": "QuestNotCompleted"
+    },
+    {
+      "code": 13,
+      "name": "QuestRewardAlreadyClaimed"
+    },
+    {
+      "code": 14,
+      "name": "InvalidQuestType"
+    },
+    {
+      "code": 15,
+      "name": "FeeTooHigh"
+    },
+    {
+      "code": 16,
+      "name": "SkinCurrentlyEquipped"
+    },
+    {
+      "code": 17,
+      "name": "InvalidGauntletPool"
+    },
+    {
+      "code": 18,
+      "name": "PriceTooLow"
+    },
+    {
+      "code": 19,
+      "name": "InvalidAccountData"
     }
   ]
 }

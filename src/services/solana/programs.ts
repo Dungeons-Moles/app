@@ -9,6 +9,10 @@ import gameplayStateIdl from './idl/gameplay_state.json';
 import playerInventoryIdl from './idl/player_inventory.json';
 import poiSystemIdl from './idl/poi_system.json';
 import nftMarketplaceIdl from './idl/nft_marketplace.json';
+import {
+  attachNftMarketplaceQuasarAccounts,
+  attachPlayerProfileQuasarAccounts,
+} from './quasarPilots';
 
 type AnchorWalletAdapter = {
   publicKey: AnchorProvider['wallet']['publicKey'];
@@ -51,10 +55,10 @@ export function createAnchorProvider(
 }
 
 export function createPlayerProfileProgram(connection: Connection) {
-  return new Program(playerProfileIdl as Idl, {
+  return attachPlayerProfileQuasarAccounts(new Program(playerProfileIdl as Idl, {
     connection,
     publicKey: SOLANA_CONFIG.programs.playerProfile,
-  });
+  }), connection);
 }
 
 export function createSessionManagerProgram(connection: Connection) {
@@ -72,7 +76,10 @@ export function createMapGeneratorProgram(connection: Connection) {
 }
 
 export function createPlayerProfileProgramWithProvider(provider: AnchorProvider) {
-  return new Program(playerProfileIdl as Idl, provider);
+  return attachPlayerProfileQuasarAccounts(
+    new Program(playerProfileIdl as Idl, provider),
+    provider.connection
+  );
 }
 
 export function createSessionManagerProgramWithProvider(provider: AnchorProvider) {
@@ -117,12 +124,15 @@ export function createPoiSystemProgramWithProvider(provider: AnchorProvider) {
 }
 
 export function createNftMarketplaceProgram(connection: Connection) {
-  return new Program(nftMarketplaceIdl as Idl, {
+  return attachNftMarketplaceQuasarAccounts(new Program(nftMarketplaceIdl as Idl, {
     connection,
     publicKey: SOLANA_CONFIG.programs.nftMarketplace,
-  });
+  }), connection);
 }
 
 export function createNftMarketplaceProgramWithProvider(provider: AnchorProvider) {
-  return new Program(nftMarketplaceIdl as Idl, provider);
+  return attachNftMarketplaceQuasarAccounts(
+    new Program(nftMarketplaceIdl as Idl, provider),
+    provider.connection
+  );
 }

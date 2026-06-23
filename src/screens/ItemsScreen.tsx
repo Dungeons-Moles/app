@@ -48,11 +48,8 @@ import {
   setItemUnlocked as setPoolBit,
   getItemPoolIndex,
 } from '../services/solana/types/item_pool';
-import {
-  createAnchorProvider,
-  createPlayerProfileProgram,
-  createPlayerProfileProgramWithProvider,
-} from '../services/solana/programs';
+import { createPlayerProfileProgram } from '../services/solana/programs';
+import { buildSetRelicActiveTx } from '../services/solana/quasarPilots';
 import { derivePlayerRelicPoolPda } from '../services/solana/constants';
 import { encodeFixedItemId, fetchPlayerRelicPool } from '../services/solana/playerRelics';
 import { ONCHAIN_TO_ENGINE_ID } from '../services/solana/sessionRestore';
@@ -379,20 +376,6 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const [relicItems, setRelicItems] = useState<DisplayItem[]>([]);
   const [draftRelicPoolIds, setDraftRelicPoolIds] = useState<Set<string>>(new Set());
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const walletAdapter = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any) => txs,
-    } as any;
-    return createAnchorProvider(baseConnection, walletAdapter);
-  }, [baseConnection, wallet.publicKey]);
-  const writeProgram = useMemo(() => {
-    if (!provider) return null;
-    return createPlayerProfileProgramWithProvider(provider);
-  }, [provider]);
-
   const activePoolBitmask = useMemo(
     () => profile?.activeItemPool ?? new Uint8Array(BITMASK_SIZE),
     [profile?.activeItemPool]
@@ -599,20 +582,19 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         return;
       }
 
-      if (wallet.publicKey && writeProgram) {
+      if (wallet.publicKey) {
         const [playerRelicPoolPda] = derivePlayerRelicPoolPda(wallet.publicKey);
         for (const relic of relicItems) {
           const desiredActive = draftRelicPoolIds.has(relic.id);
           const currentActive = !!relic.inRelicPool;
           if (desiredActive === currentActive) continue;
           const relicItemId = relic.id === 'T17' ? 'S-XX-07' : relic.id;
-          const transaction = await writeProgram.methods
-            .setRelicActive(encodeFixedItemId(relicItemId), desiredActive)
-            .accounts({
-              playerRelicPool: playerRelicPoolPda,
-              owner: wallet.publicKey,
-            })
-            .transaction();
+          const transaction = buildSetRelicActiveTx({
+            owner: wallet.publicKey,
+            playerRelicPool: playerRelicPoolPda,
+            relicItemId: encodeFixedItemId(relicItemId),
+            active: desiredActive,
+          });
           const signature = await signAndSendTransaction(transaction);
           await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         }
@@ -637,7 +619,6 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     signAndSendTransaction,
     updateActiveItemPool,
     wallet.publicKey,
-    writeProgram,
   ]);
 
   const handleBack = useCallback(() => {

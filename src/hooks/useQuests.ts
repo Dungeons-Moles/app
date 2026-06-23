@@ -1,12 +1,9 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { PublicKey, SystemProgram } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import {
-  createAnchorProvider,
-  createNftMarketplaceProgram,
-  createNftMarketplaceProgramWithProvider,
-} from '@/services/solana/programs';
+import { createNftMarketplaceProgram } from '@/services/solana/programs';
+import { buildAcceptQuestTx, buildClaimQuestRewardTx } from '@/services/solana/quasarPilots';
 import { deriveQuestDefPda, deriveQuestProgressPda } from '@/services/solana/constants';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -26,21 +23,6 @@ export function useQuests() {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
-
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const walletAdapter = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any) => txs,
-    } as any;
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
-
-  const writeProgram = useMemo(() => {
-    if (!provider) return null;
-    return createNftMarketplaceProgramWithProvider(provider);
-  }, [provider]);
 
   // Fetch all quest definitions + player progress
   const fetchQuests = useCallback(async () => {
@@ -99,7 +81,7 @@ export function useQuests() {
   // Accept a quest
   const acceptQuest = useCallback(
     async (questId: number): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -112,15 +94,12 @@ export function useQuests() {
         const [questDefPda] = deriveQuestDefPda(questId);
         const [questProgressPda] = deriveQuestProgressPda(wallet.publicKey, questId);
 
-        const transaction = await writeProgram.methods
-          .acceptQuest(questId)
-          .accounts({
-            questDefinition: questDefPda,
-            questProgress: questProgressPda,
-            player: wallet.publicKey,
-            systemProgram: SystemProgram.programId,
-          })
-          .transaction();
+        const transaction = buildAcceptQuestTx({
+          questDefinition: questDefPda,
+          questProgress: questProgressPda,
+          player: wallet.publicKey,
+          questId,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -135,13 +114,13 @@ export function useQuests() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, fetchQuests, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, fetchQuests, signAndSendTransaction, wallet.publicKey]
   );
 
   // Claim quest reward
   const claimReward = useCallback(
     async (questId: number): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -154,14 +133,12 @@ export function useQuests() {
         const [questDefPda] = deriveQuestDefPda(questId);
         const [questProgressPda] = deriveQuestProgressPda(wallet.publicKey, questId);
 
-        const transaction = await writeProgram.methods
-          .claimQuestReward(questId)
-          .accounts({
-            questDefinition: questDefPda,
-            questProgress: questProgressPda,
-            player: wallet.publicKey,
-          })
-          .transaction();
+        const transaction = buildClaimQuestRewardTx({
+          questDefinition: questDefPda,
+          questProgress: questProgressPda,
+          player: wallet.publicKey,
+          questId,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -176,7 +153,7 @@ export function useQuests() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, fetchQuests, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, fetchQuests, signAndSendTransaction, wallet.publicKey]
   );
 
   return {

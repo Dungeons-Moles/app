@@ -438,6 +438,7 @@ export async function fetchFullSessionState(
     fastTravel: null,
     debug: DEFAULT_DEBUG_STATE,
     totalMoves: gameStateData.totalMoves,
+    enemiesDefeated: gameStateData.enemiesDefeated ?? 0,
   };
 
   return state;

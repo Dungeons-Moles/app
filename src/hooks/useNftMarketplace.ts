@@ -1,26 +1,18 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import * as Sentry from '@sentry/react-native';
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import BN from 'bn.js';
+import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import {
-  createAnchorProvider,
-  createNftMarketplaceProgram,
-  createNftMarketplaceProgramWithProvider,
-} from '@/services/solana/programs';
+import { createNftMarketplaceProgram } from '@/services/solana/programs';
 import {
   deriveMarketplaceConfigPda,
   deriveListingPda,
   deriveMintAuthorityPda,
   derivePlayerProfilePda,
   derivePlayerRelicPoolPda,
-  MPL_CORE_PROGRAM_ID,
-  PLAYER_PROFILE_PROGRAM_ID,
-  TREASURY_PUBKEY,
-  GAUNTLET_POOL_PUBKEY,
   NFT_MARKETPLACE_PROGRAM_ID,
 } from '@/services/solana/constants';
+import { buildBuyNftTx, buildCancelListingTx, buildListNftTx } from '@/services/solana/quasarPilots';
 import { fetchUserNfts, fetchAllListings } from '@/services/solana/metaplexCore';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -44,21 +36,6 @@ export function useNftMarketplace() {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
-
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const walletAdapter = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any) => txs,
-    } as any;
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
-
-  const writeProgram = useMemo(() => {
-    if (!provider) return null;
-    return createNftMarketplaceProgramWithProvider(provider);
-  }, [provider]);
 
   // Fetch marketplace config (cached in ref to avoid repeated RPC calls)
   const fetchConfig = useCallback(async () => {
@@ -149,7 +126,7 @@ export function useNftMarketplace() {
   // List an NFT for sale
   const listNft = useCallback(
     async (asset: PublicKey, collection: PublicKey, priceLamports: number): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -164,20 +141,16 @@ export function useNftMarketplace() {
         const [mintAuthPda] = deriveMintAuthorityPda();
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
 
-        const transaction = await writeProgram.methods
-          .listNft(new BN(priceLamports))
-          .accounts({
-            listing: listingPda,
-            marketplaceConfig: configPda,
-            mintAuthority: mintAuthPda,
-            asset,
-            collection,
-            seller: wallet.publicKey,
-            playerProfile: profilePda,
-            mplCoreProgram: MPL_CORE_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .transaction();
+        const transaction = buildListNftTx({
+          listing: listingPda,
+          marketplaceConfig: configPda,
+          mintAuthority: mintAuthPda,
+          asset,
+          collection,
+          seller: wallet.publicKey,
+          playerProfile: profilePda,
+          priceLamports,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -194,13 +167,13 @@ export function useNftMarketplace() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, signAndSendTransaction, wallet.publicKey]
   );
 
   // Cancel a listing
   const cancelListing = useCallback(
     async (asset: PublicKey, collection: PublicKey): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -212,17 +185,12 @@ export function useNftMarketplace() {
       try {
         const [listingPda] = deriveListingPda(asset);
 
-        const transaction = await writeProgram.methods
-          .cancelListing()
-          .accounts({
-            listing: listingPda,
-            asset,
-            collection,
-            seller: wallet.publicKey,
-            mplCoreProgram: MPL_CORE_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .transaction();
+        const transaction = buildCancelListingTx({
+          listing: listingPda,
+          asset,
+          collection,
+          seller: wallet.publicKey,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -239,13 +207,13 @@ export function useNftMarketplace() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, signAndSendTransaction, wallet.publicKey]
   );
 
   // Buy an NFT
   const buyNft = useCallback(
     async (listingWithAsset: ListingWithAsset): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -272,26 +240,20 @@ export function useNftMarketplace() {
           NFT_MARKETPLACE_PROGRAM_ID
         )[0];
 
-        const transaction = await writeProgram.methods
-          .buyNft()
-          .accountsPartial({
-            listing: listingPda,
-            marketplaceConfig: configPda,
-            mintAuthority: mintAuthPda,
-            asset: listing.asset,
-            relicAssetRecord: isRelicItem ? relicAssetRecordPda : undefined,
-            collection: listing.collection,
-            buyer: wallet.publicKey,
-            seller: listing.seller,
-            sellerPlayerRelicPool: isRelicItem ? sellerRelicPoolPda : undefined,
-            buyerPlayerRelicPool: buyerRelicPoolPda,
-            companyTreasury: config.companyTreasury,
-            gauntletPool: config.gauntletPool,
-            mplCoreProgram: MPL_CORE_PROGRAM_ID,
-            playerProfileProgram: PLAYER_PROFILE_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .transaction();
+        const transaction = buildBuyNftTx({
+          listing: listingPda,
+          marketplaceConfig: configPda,
+          mintAuthority: mintAuthPda,
+          asset: listing.asset,
+          relicAssetRecord: isRelicItem ? relicAssetRecordPda : undefined,
+          collection: listing.collection,
+          buyer: wallet.publicKey,
+          seller: listing.seller,
+          sellerPlayerRelicPool: isRelicItem ? sellerRelicPoolPda : undefined,
+          buyerPlayerRelicPool: buyerRelicPoolPda,
+          companyTreasury: config.companyTreasury,
+          gauntletPool: config.gauntletPool,
+        });
 
         const signature = await signAndSendTransaction(transaction);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
@@ -308,7 +270,7 @@ export function useNftMarketplace() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, fetchConfig, marketplaceConfig, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, fetchConfig, marketplaceConfig, signAndSendTransaction, wallet.publicKey]
   );
 
   // Refresh everything

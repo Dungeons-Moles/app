@@ -3,310 +3,11 @@
   "metadata": {
     "name": "player_profile",
     "version": "0.1.0",
-    "spec": "0.1.0",
-    "description": "Player Profile Program for Dungeons & Moles"
+    "spec": "0.1.0"
   },
   "instructions": [
     {
-      "name": "close_profile",
-      "docs": [
-        "Closes the player's profile account and refunds rent to the owner."
-      ],
-      "discriminator": [
-        167,
-        36,
-        181,
-        8,
-        136,
-        158,
-        46,
-        207
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "consume_run",
-      "docs": [
-        "Consumes one available run from the player's profile.",
-        "Called via CPI from session-manager when starting a new session."
-      ],
-      "discriminator": [
-        107,
-        101,
-        54,
-        82,
-        132,
-        156,
-        15,
-        34
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "equip_skin",
-      "docs": [
-        "Equips a Metaplex Core skin NFT on the player's profile.",
-        "Validates that the NFT is owned by the player and is a valid Metaplex Core asset."
-      ],
-      "discriminator": [
-        114,
-        85,
-        49,
-        172,
-        128,
-        188,
-        210,
-        76
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        },
-        {
-          "name": "skin_asset",
-          "docs": [
-            "1. Account owner == Metaplex Core program ID",
-            "2. Asset discriminator == 1 (AssetV1)",
-            "3. Asset owner field == player wallet"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "grant_relic_ownership",
-      "docs": [
-        "Marketplace-authorized ownership increment used during minting and purchases."
-      ],
-      "discriminator": [
-        176,
-        52,
-        31,
-        132,
-        17,
-        73,
-        125,
-        192
-      ],
-      "accounts": [
-        {
-          "name": "player_relic_pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114,
-                  95,
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner"
-        },
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "marketplace_authority",
-          "signer": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                227,
-                210,
-                196,
-                141,
-                198,
-                51,
-                56,
-                219,
-                199,
-                64,
-                87,
-                56,
-                5,
-                167,
-                174,
-                230,
-                145,
-                184,
-                7,
-                43,
-                163,
-                8,
-                125,
-                153,
-                5,
-                92,
-                199,
-                36,
-                178,
-                57,
-                206,
-                215
-              ]
-            }
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "relic_item_id",
-          "type": {
-            "array": [
-              "u8",
-              8
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "initialize_profile",
-      "docs": [
-        "Creates a new player profile for the signer's wallet.",
-        "Each wallet can only have one profile.",
-        "Initializes with 20 runs, level 1 unlocked, and 40 starter items."
-      ],
+      "name": "initializeProfile",
       "discriminator": [
         32,
         145,
@@ -319,627 +20,35 @@
       ],
       "accounts": [
         {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
           "name": "owner",
           "writable": true,
           "signer": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "playerProfile",
+          "writable": true
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
         }
       ],
       "args": [
         {
           "name": "name",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "name": "purchase_runs",
-      "docs": [
-        "Purchase additional runs and split payment between treasury and gauntlet pool.",
-        "Each purchase adds 20 runs and costs 0.005 SOL."
-      ],
-      "discriminator": [
-        60,
-        148,
-        42,
-        27,
-        159,
-        188,
-        113,
-        143
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        },
-        {
-          "name": "treasury",
-          "docs": [
-            "The treasury account to receive payment.",
-            "Validated to be the expected treasury pubkey."
-          ],
-          "writable": true
-        },
-        {
-          "name": "gauntlet_pool",
-          "docs": [
-            "gauntlet pool vault PDA and owned by gameplay-state program."
-          ],
-          "writable": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "record_run_result",
-      "docs": [
-        "Records the result of a completed dungeon run.",
-        "On first-time victory, unlocks the next level and a random item.",
-        "Note: available_runs is NOT decremented here - it's already done by consume_run",
-        "at session start via CPI from session-manager."
-      ],
-      "discriminator": [
-        135,
-        126,
-        78,
-        133,
-        237,
-        190,
-        21,
-        71
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "_level_completed",
-          "type": "u8"
-        },
-        {
-          "name": "_victory",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "name": "record_run_result_cpi",
-      "docs": [
-        "Records the result of a completed dungeon run via CPI from session-manager.",
-        "Uses session account for authorization instead of requiring player signature.",
-        "This allows the session key signer to trigger run result recording without user interaction.",
-        "",
-        "Authorization: The session account proves player ownership. We verify:",
-        "1. Session account is owned by the session-manager program",
-        "2. Session's player field matches the profile's owner",
-        "3. Session key signer signer matches the session's stored session_signer"
-      ],
-      "discriminator": [
-        9,
-        175,
-        246,
-        9,
-        31,
-        98,
-        121,
-        69
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true
-        },
-        {
-          "name": "session",
-          "docs": [
-            "1. Account owner == session-manager program ID (enforced by constraint below)",
-            "2. session.player == player_profile.owner",
-            "3. session.campaign_level == level_completed input",
-            "4. session.session_signer == session_signer signer"
-          ]
-        },
-        {
-          "name": "session_signer",
-          "docs": [
-            "Session key signer signer - verified against session's stored session_signer field."
-          ],
-          "signer": true
-        },
-        {
-          "name": "session_manager_authority",
-          "signer": true
-        }
-      ],
-      "args": [
-        {
-          "name": "level_completed",
-          "type": "u8"
-        },
-        {
-          "name": "victory",
-          "type": "bool"
-        },
-        {
-          "name": "unlock_randomness",
           "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "revoke_relic_ownership",
-      "docs": [
-        "Marketplace-authorized ownership decrement used during item trades."
-      ],
-      "discriminator": [
-        123,
-        199,
-        51,
-        123,
-        182,
-        0,
-        159,
-        177
-      ],
-      "accounts": [
-        {
-          "name": "player_relic_pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114,
-                  95,
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner"
-        },
-        {
-          "name": "marketplace_authority",
-          "signer": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                227,
-                210,
-                196,
-                141,
-                198,
-                51,
-                56,
-                219,
-                199,
-                64,
-                87,
-                56,
-                5,
-                167,
-                174,
-                230,
-                145,
-                184,
-                7,
-                43,
-                163,
-                8,
-                125,
-                153,
-                5,
-                92,
-                199,
-                36,
-                178,
-                57,
-                206,
-                215
-              ]
-            }
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "relic_item_id",
-          "type": {
-            "array": [
-              "u8",
-              8
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "set_relic_active",
-      "docs": [
-        "Toggles whether an owned relic type can appear in future session item offers."
-      ],
-      "discriminator": [
-        59,
-        219,
-        164,
-        158,
-        201,
-        20,
-        227,
-        95
-      ],
-      "accounts": [
-        {
-          "name": "player_relic_pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114,
-                  95,
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_relic_pool"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "relic_item_id",
-          "type": {
-            "array": [
-              "u8",
-              8
-            ]
-          }
-        },
-        {
-          "name": "active",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "name": "sync_relic_ownership",
-      "docs": [
-        "Reconciles owned relic counts from externally supplied ownership proofs.",
-        "Any relic whose proven count drops to zero is removed from the pool and",
-        "automatically deactivated."
-      ],
-      "discriminator": [
-        35,
-        216,
-        49,
-        188,
-        212,
-        247,
-        12,
-        202
-      ],
-      "accounts": [
-        {
-          "name": "player_relic_pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114,
-                  95,
-                  114,
-                  101,
-                  108,
-                  105,
-                  99,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_relic_pool"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "owned_relic_item_ids",
-          "type": {
-            "vec": {
-              "array": [
-                "u8",
-                8
-              ]
+            "string": {
+              "maxLength": 32
             }
           }
         }
       ]
     },
     {
-      "name": "unequip_skin",
-      "docs": [
-        "Unequips the currently equipped skin NFT."
-      ],
-      "discriminator": [
-        144,
-        147,
-        87,
-        145,
-        250,
-        113,
-        30,
-        135
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "update_active_item_pool",
-      "docs": [
-        "Updates the active item pool bitmask.",
-        "The pool must be a subset of unlocked items and contain at least 40 entries."
-      ],
-      "discriminator": [
-        39,
-        206,
-        212,
-        174,
-        10,
-        184,
-        19,
-        143
-      ],
-      "accounts": [
-        {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
-        },
-        {
-          "name": "pit_draft_queue"
-        }
-      ],
-      "args": [
-        {
-          "name": "active_item_pool",
-          "type": {
-            "array": [
-              "u8",
-              10
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "update_profile_name",
-      "docs": [
-        "Updates the display name of an existing profile."
-      ],
+      "name": "updateProfileName",
       "discriminator": [
         96,
         69,
@@ -952,40 +61,417 @@
       ],
       "accounts": [
         {
-          "name": "player_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  121,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "name": "owner",
+          "signer": true
         },
         {
-          "name": "owner",
-          "signer": true,
-          "relations": [
-            "player_profile"
-          ]
+          "name": "playerProfile",
+          "writable": true
         }
       ],
       "args": [
         {
           "name": "name",
-          "type": "string"
+          "type": {
+            "string": {
+              "maxLength": 32
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "closeProfile",
+      "discriminator": [
+        167,
+        36,
+        181,
+        8,
+        136,
+        158,
+        46,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "updateActiveItemPool",
+      "discriminator": [
+        39,
+        206,
+        212,
+        174,
+        10,
+        184,
+        19,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        },
+        {
+          "name": "pitDraftQueue"
+        }
+      ],
+      "args": [
+        {
+          "name": "activeItemPool",
+          "type": {
+            "defined": "[u8]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "recordRunResult",
+      "discriminator": [
+        135,
+        126,
+        78,
+        133,
+        237,
+        190,
+        21,
+        71
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "LevelCompleted",
+          "type": "u8"
+        },
+        {
+          "name": "Victory",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "consumeRun",
+      "discriminator": [
+        107,
+        101,
+        54,
+        82,
+        132,
+        156,
+        15,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "recordRunResultCpi",
+      "discriminator": [
+        9,
+        175,
+        246,
+        9,
+        31,
+        98,
+        121,
+        69
+      ],
+      "accounts": [
+        {
+          "name": "playerProfile",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "sessionSigner",
+          "signer": true
+        },
+        {
+          "name": "sessionManagerAuthority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "levelCompleted",
+          "type": "u8"
+        },
+        {
+          "name": "victory",
+          "type": "bool"
+        },
+        {
+          "name": "unlockRandomness",
+          "type": {
+            "defined": "[u8]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "purchaseRuns",
+      "discriminator": [
+        60,
+        148,
+        42,
+        27,
+        159,
+        188,
+        113,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "gauntletPool",
+          "writable": true
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "equipSkin",
+      "discriminator": [
+        114,
+        85,
+        49,
+        172,
+        128,
+        188,
+        210,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        },
+        {
+          "name": "skinAsset"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "unequipSkin",
+      "discriminator": [
+        144,
+        147,
+        87,
+        145,
+        250,
+        113,
+        30,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerProfile",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "setRelicActive",
+      "discriminator": [
+        59,
+        219,
+        164,
+        158,
+        201,
+        20,
+        227,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerRelicPool",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "relicItemId",
+          "type": {
+            "defined": "[u8]"
+          }
+        },
+        {
+          "name": "active",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "grantRelicOwnership",
+      "discriminator": [
+        176,
+        52,
+        31,
+        132,
+        17,
+        73,
+        125,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "owner"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "playerRelicPool",
+          "writable": true
+        },
+        {
+          "name": "marketplaceAuthority",
+          "signer": true
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "relicItemId",
+          "type": {
+            "defined": "[u8]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "revokeRelicOwnership",
+      "discriminator": [
+        123,
+        199,
+        51,
+        123,
+        182,
+        0,
+        159,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "owner"
+        },
+        {
+          "name": "playerRelicPool",
+          "writable": true
+        },
+        {
+          "name": "marketplaceAuthority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "relicItemId",
+          "type": {
+            "defined": "[u8]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "syncRelicOwnership",
+      "discriminator": [
+        35,
+        216,
+        49,
+        188,
+        212,
+        247,
+        12,
+        202
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "playerRelicPool",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "ownedRelicItemIds",
+          "type": {
+            "defined": "Vec"
+          }
         }
       ]
     }
@@ -1000,8 +486,7 @@
         87,
         164,
         130,
-        181,
-        80
+        181
       ]
     },
     {
@@ -1013,348 +498,70 @@
         203,
         111,
         254,
-        159,
-        128
+        159
       ]
     }
   ],
-  "events": [
-    {
-      "name": "ItemUnlocked",
-      "discriminator": [
-        238,
-        95,
-        223,
-        107,
-        99,
-        138,
-        17,
-        101
-      ]
-    },
-    {
-      "name": "ProfileCreated",
-      "discriminator": [
-        134,
-        233,
-        199,
-        153,
-        77,
-        206,
-        128,
-        94
-      ]
-    },
-    {
-      "name": "RunCompleted",
-      "discriminator": [
-        233,
-        115,
-        120,
-        101,
-        166,
-        52,
-        138,
-        133
-      ]
-    },
-    {
-      "name": "RunConsumed",
-      "discriminator": [
-        11,
-        255,
-        222,
-        140,
-        68,
-        177,
-        128,
-        151
-      ]
-    },
-    {
-      "name": "RunsPurchased",
-      "discriminator": [
-        169,
-        230,
-        30,
-        62,
-        247,
-        83,
-        140,
-        9
-      ]
-    }
-  ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "ProfileAlreadyExists",
-      "msg": "Player profile already exists for this wallet"
-    },
-    {
-      "code": 6001,
-      "name": "NameTooLong",
-      "msg": "Display name exceeds 32 character limit"
-    },
-    {
-      "code": 6002,
-      "name": "NoAvailableRuns",
-      "msg": "No available runs remaining"
-    },
-    {
-      "code": 6003,
-      "name": "Unauthorized",
-      "msg": "Signer is not the profile owner"
-    },
-    {
-      "code": 6004,
-      "name": "ArithmeticOverflow",
-      "msg": "Arithmetic overflow occurred"
-    },
-    {
-      "code": 6005,
-      "name": "ActivePoolTooSmall",
-      "msg": "Active item pool must contain at least 40 items"
-    },
-    {
-      "code": 6006,
-      "name": "ItemNotUnlocked",
-      "msg": "Item is not unlocked"
-    },
-    {
-      "code": 6007,
-      "name": "InvalidItemIndex",
-      "msg": "Item index is out of valid range"
-    },
-    {
-      "code": 6008,
-      "name": "InsufficientPayment",
-      "msg": "Insufficient SOL for purchase"
-    },
-    {
-      "code": 6009,
-      "name": "LevelNotUnlocked",
-      "msg": "Level is not unlocked"
-    },
-    {
-      "code": 6010,
-      "name": "InvalidTreasury",
-      "msg": "Invalid treasury account"
-    },
-    {
-      "code": 6011,
-      "name": "InvalidGauntletPool",
-      "msg": "Invalid gauntlet pool account"
-    },
-    {
-      "code": 6012,
-      "name": "InvalidSession",
-      "msg": "Invalid session account"
-    },
-    {
-      "code": 6013,
-      "name": "InvalidSessionOwner",
-      "msg": "Session account has invalid owner"
-    },
-    {
-      "code": 6014,
-      "name": "InvalidSessionSigner",
-      "msg": "Session key signer does not match session"
-    },
-    {
-      "code": 6015,
-      "name": "DirectMutationDisabled",
-      "msg": "Direct mutation disabled"
-    },
-    {
-      "code": 6016,
-      "name": "InvalidSessionManagerAuthority",
-      "msg": "Invalid session-manager authority"
-    },
-    {
-      "code": 6017,
-      "name": "InvalidPitDraftQueue",
-      "msg": "Invalid pit draft queue account"
-    },
-    {
-      "code": 6018,
-      "name": "PitDraftQueueLocked",
-      "msg": "Cannot update active item pool while queued in pit draft"
-    },
-    {
-      "code": 6019,
-      "name": "InvalidSkinAsset",
-      "msg": "Invalid skin NFT asset"
-    },
-    {
-      "code": 6020,
-      "name": "SkinNotOwned",
-      "msg": "Skin NFT is not owned by the player"
-    },
-    {
-      "code": 6021,
-      "name": "InvalidPitDraftQueueDiscriminator",
-      "msg": "Invalid pit draft queue discriminator"
-    },
-    {
-      "code": 6022,
-      "name": "SessionDataTooShort",
-      "msg": "Session account data too short"
-    },
-    {
-      "code": 6023,
-      "name": "InvalidRelicAsset",
-      "msg": "Invalid relic asset"
-    },
-    {
-      "code": 6024,
-      "name": "RelicNotOwned",
-      "msg": "Relic is not owned by the player"
-    },
-    {
-      "code": 6025,
-      "name": "RelicAlreadyRegistered",
-      "msg": "Relic is already registered"
-    },
-    {
-      "code": 6026,
-      "name": "RelicNotFound",
-      "msg": "Relic not found"
-    },
-    {
-      "code": 6027,
-      "name": "RelicPoolFull",
-      "msg": "Player relic pool is full"
-    }
-  ],
+  "events": [],
   "types": [
     {
-      "name": "ItemUnlocked",
-      "docs": [
-        "Emitted when a new item is unlocked on first-time level completion"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "item_index",
-            "type": "u8"
-          },
-          {
-            "name": "level_completed",
-            "type": "u8"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
       "name": "PlayerProfile",
-      "docs": [
-        "Player profile account storing identity and progression data.",
-        "PDA Seeds: [b\"player\", owner.key()]"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "owner",
-            "docs": [
-              "Wallet address that owns this profile"
-            ],
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
-            "name": "name",
-            "docs": [
-              "Display name (max 32 chars)"
-            ],
-            "type": "string"
-          },
-          {
-            "name": "total_runs",
-            "docs": [
-              "Total dungeon runs completed"
-            ],
+            "name": "totalRuns",
             "type": "u32"
           },
           {
-            "name": "highest_level_unlocked",
-            "docs": [
-              "Highest campaign level unlocked (1-40)",
-              "Renamed from `current_level` to better reflect its purpose"
-            ],
+            "name": "highestLevelUnlocked",
             "type": "u8"
           },
           {
-            "name": "available_runs",
-            "docs": [
-              "Remaining available dungeon runs"
-            ],
+            "name": "availableRuns",
             "type": "u32"
           },
           {
-            "name": "created_at",
-            "docs": [
-              "Unix timestamp of profile creation"
-            ],
+            "name": "createdAt",
             "type": "i64"
           },
           {
             "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
             "type": "u8"
           },
           {
-            "name": "unlocked_items",
-            "docs": [
-              "Bitmask of unlocked items (80 bits = 10 bytes)",
-              "Bits 0-39 are starter items, bits 40-92 are unlockable items"
-            ],
+            "name": "unlockedItems",
             "type": {
-              "array": [
-                "u8",
-                10
-              ]
+              "defined": "[u8]"
             }
           },
           {
-            "name": "active_item_pool",
-            "docs": [
-              "Bitmask of items in the active pool for new sessions",
-              "Must be a subset of `unlocked_items` and have >= 40 items"
-            ],
+            "name": "activeItemPool",
             "type": {
-              "array": [
-                "u8",
-                10
-              ]
+              "defined": "[u8]"
             }
           },
           {
-            "name": "equipped_skin",
-            "docs": [
-              "Currently equipped Metaplex Core skin NFT (if any)"
-            ],
+            "name": "equippedSkin",
             "type": {
-              "option": "pubkey"
+              "defined": "Option"
             }
           },
           {
-            "name": "gauntlet_boosters",
-            "docs": [
-              "Free gauntlet entries from quest rewards"
-            ],
+            "name": "gauntletBoosters",
             "type": "u8"
+          },
+          {
+            "name": "name",
+            "type": {
+              "string": {
+                "maxLength": 32
+              }
+            }
           }
         ]
       }
@@ -1366,151 +573,138 @@
         "fields": [
           {
             "name": "owner",
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
             "name": "count",
             "type": "u8"
           },
           {
-            "name": "relics",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "RelicEntry"
-                }
-              }
-            }
-          },
-          {
             "name": "bump",
             "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ProfileCreated",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
           },
           {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "RelicEntry",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "item_id",
+            "name": "relicEntries",
             "type": {
-              "array": [
-                "u8",
-                8
-              ]
+              "defined": "[u8]"
             }
-          },
-          {
-            "name": "owned_count",
-            "type": "u16"
-          },
-          {
-            "name": "in_active_pool",
-            "type": "bool"
           }
         ]
       }
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "ProfileAlreadyExists"
     },
     {
-      "name": "RunCompleted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "total_runs",
-            "type": "u32"
-          },
-          {
-            "name": "available_runs",
-            "type": "u32"
-          },
-          {
-            "name": "level_reached",
-            "type": "u8"
-          },
-          {
-            "name": "victory",
-            "type": "bool"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
+      "code": 1,
+      "name": "NameTooLong"
     },
     {
-      "name": "RunConsumed",
-      "docs": [
-        "Emitted when a run is consumed at session start"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "available_runs",
-            "type": "u32"
-          }
-        ]
-      }
+      "code": 2,
+      "name": "NoAvailableRuns"
     },
     {
-      "name": "RunsPurchased",
-      "docs": [
-        "Emitted when a player purchases additional runs"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "runs_added",
-            "type": "u32"
-          },
-          {
-            "name": "total_available_runs",
-            "type": "u32"
-          },
-          {
-            "name": "cost_lamports",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
+      "code": 3,
+      "name": "Unauthorized"
+    },
+    {
+      "code": 4,
+      "name": "ArithmeticOverflow"
+    },
+    {
+      "code": 5,
+      "name": "ActivePoolTooSmall"
+    },
+    {
+      "code": 6,
+      "name": "ItemNotUnlocked"
+    },
+    {
+      "code": 7,
+      "name": "InvalidItemIndex"
+    },
+    {
+      "code": 8,
+      "name": "InsufficientPayment"
+    },
+    {
+      "code": 9,
+      "name": "LevelNotUnlocked"
+    },
+    {
+      "code": 10,
+      "name": "InvalidTreasury"
+    },
+    {
+      "code": 11,
+      "name": "InvalidGauntletPool"
+    },
+    {
+      "code": 12,
+      "name": "InvalidSession"
+    },
+    {
+      "code": 13,
+      "name": "InvalidSessionOwner"
+    },
+    {
+      "code": 14,
+      "name": "InvalidSessionSigner"
+    },
+    {
+      "code": 15,
+      "name": "DirectMutationDisabled"
+    },
+    {
+      "code": 16,
+      "name": "InvalidSessionManagerAuthority"
+    },
+    {
+      "code": 17,
+      "name": "InvalidPitDraftQueue"
+    },
+    {
+      "code": 18,
+      "name": "PitDraftQueueLocked"
+    },
+    {
+      "code": 19,
+      "name": "InvalidSkinAsset"
+    },
+    {
+      "code": 20,
+      "name": "SkinNotOwned"
+    },
+    {
+      "code": 21,
+      "name": "InvalidPitDraftQueueDiscriminator"
+    },
+    {
+      "code": 22,
+      "name": "SessionDataTooShort"
+    },
+    {
+      "code": 23,
+      "name": "InvalidRelicAsset"
+    },
+    {
+      "code": 24,
+      "name": "RelicNotOwned"
+    },
+    {
+      "code": 25,
+      "name": "RelicAlreadyRegistered"
+    },
+    {
+      "code": 26,
+      "name": "RelicNotFound"
+    },
+    {
+      "code": 27,
+      "name": "RelicPoolFull"
     }
   ]
 }
